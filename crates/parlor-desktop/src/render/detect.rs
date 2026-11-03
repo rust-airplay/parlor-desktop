@@ -229,7 +229,7 @@ fn candidate(directory: &Path, named: &str) -> Option<PathBuf> {
     if direct.is_file() {
         return Some(direct);
     }
-    if cfg!(windows) && Path::new(named).extension().is_none() {
+    if cfg!(windows) && !named.to_ascii_lowercase().ends_with(".exe") {
         for extension in ["exe", "cmd", "bat"] {
             let path = directory.join(format!("{named}.{extension}"));
             if path.is_file() {
@@ -271,6 +271,14 @@ mod tests {
     #[test]
     fn an_empty_name_is_not_a_program() {
         assert_eq!(find_program("", &[]), None);
+    }
+
+    #[test]
+    fn a_dotted_name_still_finds_its_executable() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        std::fs::write(directory.path().join("gst-launch-1.0.exe"), b"").expect("a file");
+        let found = find_program("gst-launch-1.0", &[directory.path().to_path_buf()]);
+        assert!(found.is_some(), "a name with a dot is still a name");
     }
 
     #[test]
