@@ -48,6 +48,9 @@ two places that allow it, each with the reason beside it.
 
 Comments explain why. The code says what it does.
 
+The style is the Google Rust style guide, with two exceptions the ecosystem forces: the
+UI modules import GPUI with `use gpui_kit::*;` because that is the kit's documented usage and the Styled and AppContext traits are reached through it, and the program is `async` where the receiver and GPUI are. An import list that names every element helper would be the one thing on the page harder to read than the page.
+
 No emoji, in code, logs or documents.
 
 Documentation is English; the README also exists in Chinese. A guide under `docs/` states
