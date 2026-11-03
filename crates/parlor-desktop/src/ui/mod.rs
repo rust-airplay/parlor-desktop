@@ -111,13 +111,16 @@ impl RootView {
         };
         if follows_system {
             Theme::sync_system_appearance(Some(window), cx);
-            // The operating system can change appearance while the window is open, and a
-            // theme that was read once would be the appearance the machine started with.
-            let subscription = cx.observe_window_appearance(window, |_, window, cx| {
-                Theme::sync_system_appearance(Some(window), cx);
-            });
-            view.appearance = Some(subscription);
         }
+        // The appearance can change while the window is open, and the choice can change to
+        // "follow the system" while it is open. One observer answers both: it re-applies the
+        // system appearance only while that is what the settings ask for.
+        let subscription = cx.observe_window_appearance(window, |_, window, cx| {
+            if state::parlor(cx).settings.appearance.theme == crate::settings::ThemeChoice::System {
+                Theme::sync_system_appearance(Some(window), cx);
+            }
+        });
+        view.appearance = Some(subscription);
         view.pump(cx);
         if !state::parlor(cx).backends.any_ready() {
             view.ask_for_backend(window, cx);
