@@ -1,15 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Finding the programs and libraries each backend needs.
 //!
-//! Detection answers one question - can this machine play through this backend - and
-//! answers it without starting a session: a program is run for its version, a directory is
-//! looked in, a plugin is looked for beside the executable. Nothing here loads a backend.
+//! The search is deliberately short. A backend is either shipped with the application, in
+//! the `lib` directory beside the executable, or named by the environment. Nothing is looked
+//! for in an installation directory of this program's own, and the PATH is the last answer
+//! rather than the first: a machine with a MinGW GStreamer on its PATH has a runtime whose
+//! DLLs have the same names as the MSVC one the plugin was built against, and picking that
+//! one is a crash rather than a session.
+//!
+//! ```text
+//! explicit setting -> lib beside the executable -> AIRPLAY_* -> PARLOR_* -> PATH
+//! ```
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::settings::Settings;
-use crate::settings::store::Paths;
+
+/// The layout a bundled backend is looked for in, under `lib` beside the executable.
+///
+/// Three shapes are accepted because three are what a person actually produces: the flat
+/// copy, a `bin` directory, and a runtime unpacked under its own name.
+const BUNDLED_LAYOUT: [&str; 3] = ["lib", "lib/bin", "lib/gstreamer/bin"];
 
 /// Whether a backend can be used on this machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,8 +35,8 @@ pub enum Availability {
     },
     /// A required part is absent.
     Missing {
-        /// Which part is absent, because the two answers differ: one is installed and the
-        /// other is built.
+        /// Which part is absent, because the two answers differ: the plugin is built and
+        /// the runtime is installed.
         part: MissingPart,
         /// What to tell a person about the absence.
         reason: String,
@@ -36,7 +48,7 @@ pub enum Availability {
 pub enum MissingPart {
     /// The application's plugin was not built or is not beside the executable.
     Plugin,
-    /// The programs or the runtime were not installed.
+    /// The programs or the runtime were not found.
     Runtime,
 }
 
@@ -64,12 +76,12 @@ impl Backends {
 }
 
 /// Looks for both backends.
-pub fn probe(settings: &Settings, paths: &Paths) -> Backends {
-    Backends { gstreamer: gstreamer(settings, paths), ffmpeg: ffmpeg(settings, paths) }
+pub fn probe(settings: &Settings) -> Backends {
+    Backends { gstreamer: gstreamer(settings), ffmpeg: ffmpeg(settings) }
 }
 
-/// Looks for the GStreamer runtime and its video launcher.
-pub fn gstreamer(settings: &Settings, paths: &Paths) -> Availability {
+/// Looks for the GStreamer plugin, its runtime and its video launcher.
+pub fn gstreamer(settings: &Settings) -> Availability {
     let Some(plugin) = plugin_path() else {
         return Availability::Missing {
             part: MissingPart::Plugin,
@@ -82,10 +94,11 @@ pub fn gstreamer(settings: &Settings, paths: &Paths) -> Availability {
             reason: format!("{} is missing", plugin.display()),
         };
     }
-    let Some(launch) = gst_launch(settings, paths) else {
+    let Some(launch) = gst_launch(settings) else {
         return Availability::Missing {
             part: MissingPart::Runtime,
-            reason: "gst-launch-1.0 was not found".to_owned(),
+            reason: "gst-launch-1.0 was not found in lib, in the environment or on the PATH"
+                .to_owned(),
         };
     };
     let version = version_of(&launch).unwrap_or_else(|| "GStreamer".to_owned());
@@ -93,11 +106,12 @@ pub fn gstreamer(settings: &Settings, paths: &Paths) -> Availability {
 }
 
 /// Looks for the FFmpeg programs a session needs.
-pub fn ffmpeg(settings: &Settings, paths: &Paths) -> Availability {
-    let Some(programs) = ffmpeg_programs(settings, paths) else {
+pub fn ffmpeg(settings: &Settings) -> Availability {
+    let Some(programs) = ffmpeg_programs(settings) else {
         return Availability::Missing {
             part: MissingPart::Runtime,
-            reason: "ffmpeg and ffplay were not found".to_owned(),
+            reason: "ffmpeg and ffplay were not found in lib, in the environment or on the PATH"
+                .to_owned(),
         };
     };
     let version = version_of(&programs.decoder).unwrap_or_else(|| "FFmpeg".to_owned());
@@ -119,17 +133,22 @@ pub struct FfmpegPrograms {
 
 /// Finds the FFmpeg programs, or None when one is absent.
 ///
-/// The decoder is looked for where it was named, then in the directory the application
-/// installs into, then on the PATH. The player is looked for beside the decoder first,
-/// because an installation keeps them together: a machine may have ffmpeg from a package
+/// The decoder is looked for where it was named, then under `lib` beside the executable, then
+/// in the environment, then on the PATH. The player is looked for beside the decoder first,
+/// because a distribution keeps them together: a machine may have ffmpeg from a package
 /// manager and ffplay from nowhere at all.
-pub fn ffmpeg_programs(settings: &Settings, paths: &Paths) -> Option<FfmpegPrograms> {
-    let installed = installed_directory(paths, "ffmpeg");
-    let _ = &settings.backend.ffmpeg.decoder;
-    let decoder = find_program(&settings.backend.ffmpeg.decoder, &installed)
-        .or_else(|| find_program("ffmpeg", &installed))?;
-    let mut beside = decoder.parent().map(Path::to_path_buf).into_iter().collect::<Vec<_>>();
-    beside.extend(installed.iter().cloned());
+pub fn ffmpeg_programs(settings: &Settings) -> Option<FfmpegPrograms> {
+    let decoder = named_program(&settings.backend.ffmpeg.decoder)
+        .or_else(|| find_in("ffmpeg", &bundled_directories()))
+        .or_else(|| env_program("AIRPLAY_FFMPEG"))
+        .or_else(|| find_in("ffmpeg", &environment_directories("PARLOR_FFMPEG_DIR")))
+        .or_else(|| find_program("ffmpeg", &[]))?;
+    let mut beside = Vec::new();
+    if let Some(parent) = decoder.parent() {
+        beside.push(parent.to_path_buf());
+    }
+    beside.extend(bundled_directories());
+    beside.extend(environment_directories("PARLOR_FFMPEG_DIR"));
     let player = find_program("ffplay", &beside)?;
     let audio_sink = sink_command(&settings.backend.ffmpeg.audio_sink, &player, &["-nodisp"]);
     let video_sink = sink_command(&settings.backend.ffmpeg.video_sink, &player, &["-framedrop"]);
@@ -155,52 +174,89 @@ fn sink_command(named: &str, player: &Path, defaults: &[&str]) -> Vec<String> {
     command
 }
 
-/// The directory one backend was installed into, if any.
-pub fn installed_directory(paths: &Paths, name: &str) -> Vec<PathBuf> {
-    vec![paths.backend(name).join("bin"), paths.backend(name)]
-}
-
 /// Finds gst-launch-1.0, which the GStreamer backend runs for video.
-pub fn gst_launch(settings: &Settings, paths: &Paths) -> Option<PathBuf> {
-    if let Some(launch) = find_program(&settings.backend.gstreamer.launch_path, &[]) {
-        return Some(launch);
-    }
-    let directories = gstreamer_directories(paths);
-    find_program("gst-launch-1.0", &directories)
+pub fn gst_launch(settings: &Settings) -> Option<PathBuf> {
+    named_program(&settings.backend.gstreamer.launch_path)
+        .or_else(|| find_in("gst-launch-1.0", &bundled_directories()))
+        .or_else(|| env_program("AIRPLAY_GST_LAUNCH"))
+        .or_else(|| find_in("gst-launch-1.0", &environment_directories("PARLOR_GSTREAMER_DIR")))
+        .or_else(|| find_program("gst-launch-1.0", &[]))
 }
 
-/// The directories a GStreamer runtime can live in.
+/// The directories beside the application that a bundled backend can live in.
 ///
-/// The order matters: a directory the application installed into is preferred over one an
-/// operating system's package manager put on the PATH, because the first is the runtime
-/// the plugin was built against.
-pub fn gstreamer_directories(paths: &Paths) -> Vec<PathBuf> {
-    let mut directories = vec![paths.backend("gstreamer").join("bin")];
-    if let Some(bundled) =
-        std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf))
-    {
-        directories.push(bundled.join("gstreamer").join("bin"));
-    }
-    if let Some(named) = std::env::var_os("PARLOR_GSTREAMER_DIR") {
-        directories.push(PathBuf::from(named).join("bin"));
-        directories
-            .push(PathBuf::from(std::env::var_os("PARLOR_GSTREAMER_DIR").unwrap_or_default()));
-    }
+/// These are the first place a program is looked for, so a portable distribution is decided
+/// by what is in its own directory rather than by what the machine happens to have.
+pub fn bundled_directories() -> Vec<PathBuf> {
+    let Some(executable) = executable_directory() else {
+        return Vec::new();
+    };
+    BUNDLED_LAYOUT.iter().map(|layout| executable.join(layout)).collect()
+}
+
+/// The directories a root environment variable names, as a runtime and as a plain directory.
+pub fn environment_directories(variable: &str) -> Vec<PathBuf> {
+    let Some(named) = std::env::var_os(variable) else {
+        return Vec::new();
+    };
+    let root = PathBuf::from(named);
+    vec![root.join("bin"), root]
+}
+
+/// The directories a plugin's own dependencies can be loaded from.
+///
+/// The loader adds these before opening the plugin: a bundled runtime keeps its DLLs in
+/// `lib`, and a runtime named by the environment keeps them in its `bin`.
+pub fn plugin_directories() -> Vec<PathBuf> {
+    let mut directories = bundled_directories();
+    directories.extend(environment_directories("PARLOR_GSTREAMER_DIR"));
     directories
 }
 
 /// The location the GStreamer plugin is expected at.
+///
+/// The plugin is part of the application, so it is looked for beside the executable and then
+/// in `lib`. A build that could not produce it is reported by the caller.
 pub fn plugin_path() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.join(parlor_backend_api::plugin_file_name()))
+    let executable = std::env::current_exe().ok()?;
+    let directory = executable.parent()?;
+    let name = parlor_backend_api::plugin_file_name();
+    let beside = directory.join(name);
+    if beside.is_file() {
+        return Some(beside);
+    }
+    Some(directory.join("lib").join(name))
 }
 
-/// Finds a program by name in these directories, and then on the PATH.
+/// The directory the executable is in.
+fn executable_directory() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    executable.parent().map(Path::to_path_buf)
+}
+
+/// A program the caller named, which is a path or a name on the PATH.
+fn named_program(named: &str) -> Option<PathBuf> {
+    let named = named.trim();
+    if named.is_empty() {
+        return None;
+    }
+    find_program(named, &[])
+}
+
+/// A program an environment variable names.
+fn env_program(variable: &str) -> Option<PathBuf> {
+    let named = std::env::var_os(variable)?;
+    if named.is_empty() {
+        return None;
+    }
+    find_program(&named.to_string_lossy(), &[])
+}
+
+/// Finds a program in these directories only.
 ///
-/// A name with a separator in it is a path and is used as one. Otherwise the directories
-/// are tried in order, then every directory on the PATH; on Windows each candidate is also
-/// tried with an executable extension.
-pub fn find_program(named: &str, directories: &[PathBuf]) -> Option<PathBuf> {
+/// A name with a separator in it is a path and is used as one. On Windows each candidate is
+/// also tried with an executable extension, because a name is not a file name.
+pub fn find_in(named: &str, directories: &[PathBuf]) -> Option<PathBuf> {
     let named = named.trim();
     if named.is_empty() {
         return None;
@@ -209,18 +265,17 @@ pub fn find_program(named: &str, directories: &[PathBuf]) -> Option<PathBuf> {
         let path = PathBuf::from(named);
         return path.is_file().then_some(path);
     }
-    for directory in directories {
-        if let Some(path) = candidate(directory, named) {
-            return Some(path);
-        }
-    }
-    let path = std::env::var_os("PATH")?;
-    for directory in std::env::split_paths(&path) {
-        if let Some(path) = candidate(&directory, named) {
-            return Some(path);
-        }
-    }
-    None
+    directories.iter().find_map(|directory| candidate(directory, named))
+}
+
+/// Finds a program in these directories, and then on the PATH.
+pub fn find_program(named: &str, directories: &[PathBuf]) -> Option<PathBuf> {
+    find_in(named, directories).or_else(|| find_in(named, &path_directories()))
+}
+
+/// Every directory on the PATH.
+fn path_directories() -> Vec<PathBuf> {
+    std::env::var_os("PATH").map(|path| std::env::split_paths(&path).collect()).unwrap_or_default()
 }
 
 /// One candidate file name in one directory.
@@ -265,8 +320,7 @@ pub fn version_of(program: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{candidate, find_program};
-    use std::path::Path;
+    use super::{BUNDLED_LAYOUT, candidate, find_in, find_program};
 
     #[test]
     fn an_empty_name_is_not_a_program() {
@@ -277,7 +331,7 @@ mod tests {
     fn a_dotted_name_still_finds_its_executable() {
         let directory = tempfile::tempdir().expect("a temporary directory");
         std::fs::write(directory.path().join("gst-launch-1.0.exe"), b"").expect("a file");
-        let found = find_program("gst-launch-1.0", &[directory.path().to_path_buf()]);
+        let found = find_in("gst-launch-1.0", &[directory.path().to_path_buf()]);
         assert!(found.is_some(), "a name with a dot is still a name");
     }
 
@@ -288,6 +342,28 @@ mod tests {
         std::fs::write(&program, b"").expect("a file");
         let found = find_program("probe", &[directory.path().to_path_buf()]);
         assert_eq!(found.as_deref(), Some(program.as_path()));
-        assert!(candidate(Path::new("."), "nothing-here").is_none());
+        assert!(candidate(std::path::Path::new("."), "nothing-here").is_none());
+    }
+
+    #[test]
+    fn the_bundled_layout_is_lib_beside_the_executable() {
+        assert_eq!(BUNDLED_LAYOUT, ["lib", "lib/bin", "lib/gstreamer/bin"]);
+    }
+
+    #[test]
+    fn a_bundled_directory_is_preferred_to_the_next_one() {
+        let bundled = tempfile::tempdir().expect("a temporary directory");
+        let environment = tempfile::tempdir().expect("a temporary directory");
+        let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        std::fs::write(bundled.path().join(name), b"bundled").expect("a file");
+        std::fs::write(environment.path().join(name), b"environment").expect("a file");
+        let found =
+            find_in("ffmpeg", &[bundled.path().to_path_buf(), environment.path().to_path_buf()])
+                .expect("a program");
+        assert_eq!(
+            std::fs::read(&found).expect("the file"),
+            b"bundled",
+            "the bundled copy comes first"
+        );
     }
 }

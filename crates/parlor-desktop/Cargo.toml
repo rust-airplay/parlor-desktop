@@ -23,8 +23,6 @@ log = { workspace = true }
 tokio = { workspace = true }
 async-channel = { workspace = true }
 libloading = { workspace = true }
-reqwest = { workspace = true }
-zip = { workspace = true }
 chrono = { workspace = true }
 getrandom = { workspace = true }
 windows-sys = { workspace = true }

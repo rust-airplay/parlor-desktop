@@ -14,7 +14,6 @@ use rust_airplay_ffmpeg::{FfmpegRenderer, Options, Program};
 use crate::render::Error;
 use crate::render::detect;
 use crate::settings::Settings;
-use crate::settings::store::Paths;
 
 /// Builds a renderer around the FFmpeg programs this machine has.
 ///
@@ -22,9 +21,11 @@ use crate::settings::store::Paths;
 ///
 /// Returns [Error::Ffmpeg] when ffmpeg or ffplay is absent, or when the backend refuses
 /// the command lines the settings asked for.
-pub fn build(settings: &Settings, paths: &Paths) -> Result<Arc<dyn Renderer>, Error> {
-    let programs = detect::ffmpeg_programs(settings, paths).ok_or_else(|| {
-        Error::Ffmpeg("ffmpeg and ffplay were not found; install the FFmpeg backend".to_owned())
+pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
+    let programs = detect::ffmpeg_programs(settings).ok_or_else(|| {
+        Error::Ffmpeg(
+            "ffmpeg and ffplay were not found in lib, in the environment or on the PATH".to_owned(),
+        )
     })?;
     let options = Options::new(program(&programs.audio_sink), program(&programs.video_sink))
         .with_decoder(programs.decoder.to_string_lossy().into_owned())

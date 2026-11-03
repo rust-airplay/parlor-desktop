@@ -10,7 +10,6 @@
 pub mod detect;
 pub mod ffmpeg;
 pub mod gst;
-pub mod install;
 
 use std::sync::Arc;
 
@@ -18,7 +17,6 @@ use rust_airplay::Renderer;
 
 use crate::settings::BackendKind;
 use crate::settings::Settings;
-use crate::settings::store::Paths;
 
 /// Why a session has no renderer.
 #[derive(Debug)]
@@ -47,10 +45,10 @@ impl std::error::Error for Error {}
 /// Returns [Error] when the chosen backend cannot be built: its program is missing, its
 /// plugin will not load, or it refuses the options. A session that has no renderer cannot
 /// play, so the caller reports this instead of starting one.
-pub fn build(settings: &Settings, paths: &Paths) -> Result<Arc<dyn Renderer>, Error> {
+pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
     match settings.backend.kind {
-        BackendKind::GStreamer => gst::build(settings, paths),
-        BackendKind::Ffmpeg => ffmpeg::build(settings, paths),
+        BackendKind::GStreamer => gst::build(settings),
+        BackendKind::Ffmpeg => ffmpeg::build(settings),
     }
 }
 
@@ -58,12 +56,9 @@ pub fn build(settings: &Settings, paths: &Paths) -> Result<Arc<dyn Renderer>, Er
 mod tests {
     use super::build;
     use crate::settings::Settings;
-    use crate::settings::store::Paths;
 
     #[test]
     fn a_missing_plugin_is_reported_rather_than_panicking() {
-        let directory = tempfile::tempdir().expect("a temporary directory");
-        let paths = Paths::at(directory.path());
         let mut settings = Settings::new();
         settings.backend.kind = crate::settings::BackendKind::GStreamer;
         // A machine with the plugin beside the test binary would really load it; the
@@ -71,29 +66,25 @@ mod tests {
         if crate::render::detect::plugin_path().is_some_and(|path| path.is_file()) {
             return;
         }
-        let error = build(&settings, &paths).expect_err("a plugin that is not there");
+        let error = build(&settings).expect_err("a plugin that is not there");
         assert!(error.to_string().starts_with("GStreamer: "));
     }
 
     #[test]
     #[ignore = "needs the plugin beside the test binary and a GStreamer runtime"]
     fn the_gstreamer_plugin_builds_a_renderer() {
-        let directory = tempfile::tempdir().expect("a temporary directory");
-        let paths = Paths::at(directory.path());
         let mut settings = Settings::new();
         settings.backend.kind = crate::settings::BackendKind::GStreamer;
-        let renderer = build(&settings, &paths).expect("a GStreamer renderer");
+        let renderer = build(&settings).expect("a GStreamer renderer");
         assert!(!format!("{renderer:?}").is_empty());
     }
 
     #[test]
     #[ignore = "needs ffmpeg and ffplay on the machine"]
     fn the_ffmpeg_backend_builds_a_renderer() {
-        let directory = tempfile::tempdir().expect("a temporary directory");
-        let paths = Paths::at(directory.path());
         let mut settings = Settings::new();
         settings.backend.kind = crate::settings::BackendKind::Ffmpeg;
-        let renderer = build(&settings, &paths).expect("an FFmpeg renderer");
+        let renderer = build(&settings).expect("an FFmpeg renderer");
         assert!(!format!("{renderer:?}").is_empty());
     }
 }

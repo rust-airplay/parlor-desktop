@@ -111,7 +111,7 @@ fn serve(
                 return;
             }
         };
-    let renderer: Arc<dyn rust_airplay::Renderer> = match render::build(&settings, &paths) {
+    let renderer: Arc<dyn rust_airplay::Renderer> = match render::build(&settings) {
         Ok(renderer) => renderer,
         Err(error) => {
             let _ = events.try_send(Event::Failed(error.to_string()));

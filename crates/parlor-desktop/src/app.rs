@@ -4,7 +4,6 @@
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 
-use crate::render::install::Target;
 use crate::session::logging::LogHandle;
 use crate::settings::Settings;
 use crate::settings::identity::Identity;
@@ -40,12 +39,11 @@ pub fn run() {
         log::error!("{error}");
         Identity::test_identity([0x42; 32])
     });
-    let backends = crate::render::detect::probe(&settings, &paths);
+    let backends = crate::render::detect::probe(&settings);
     log::info!("GStreamer {}", describe(&backends.gstreamer));
     log::info!("FFmpeg    {}", describe(&backends.ffmpeg));
     let problems = settings.problems();
     let theme = settings.appearance.theme;
-    let (install_sender, install_receiver) = async_channel::unbounded::<Target>();
 
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
@@ -56,7 +54,6 @@ pub fn run() {
             backends,
             problems,
             log,
-            installs: install_sender,
         });
         apply_theme_without_window(theme, cx);
         let options = WindowOptions {
@@ -67,7 +64,7 @@ pub fn run() {
             ..Default::default()
         };
         gpui_kit::open_window(options, cx, move |window, cx| {
-            cx.new(|cx| RootView::new(window, cx, install_receiver))
+            cx.new(|cx| RootView::new(window, cx))
         })
         .expect("the window");
     });

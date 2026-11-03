@@ -20,7 +20,6 @@ use rust_airplay::Renderer;
 use crate::render::Error;
 use crate::render::detect;
 use crate::settings::Settings;
-use crate::settings::store::Paths;
 
 /// The name of the variable the backend reads for the program that runs pipelines.
 const LAUNCH_ENV: &str = "AIRPLAY_GST_LAUNCH";
@@ -31,7 +30,7 @@ const LAUNCH_ENV: &str = "AIRPLAY_GST_LAUNCH";
 ///
 /// Returns [Error::GStreamer] when the plugin is missing, cannot be loaded, was built for
 /// another ABI, or refuses the options.
-pub fn build(settings: &Settings, paths: &Paths) -> Result<Arc<dyn Renderer>, Error> {
+pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
     let plugin_path = detect::plugin_path().filter(|path| path.is_file()).ok_or_else(|| {
         let expected = detect::plugin_path().map(|path| path.display().to_string());
         Error::GStreamer(match expected {
@@ -39,10 +38,10 @@ pub fn build(settings: &Settings, paths: &Paths) -> Result<Arc<dyn Renderer>, Er
             None => "the plugin was not found beside the application".to_owned(),
         })
     })?;
-    for directory in detect::gstreamer_directories(paths) {
+    for directory in detect::plugin_directories() {
         platform::add_dll_directory(&directory);
     }
-    if let Some(launch) = detect::gst_launch(settings, paths) {
+    if let Some(launch) = detect::gst_launch(settings) {
         set_launch_program(&launch);
     }
     let options = GStreamerOptions {

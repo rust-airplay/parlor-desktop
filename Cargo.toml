@@ -48,8 +48,6 @@ windows-sys = { version = "0.61", features = [
     "Win32_Globalization",
     "Win32_System_LibraryLoader",
 ] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "http2"] }
-zip = { version = "9", default-features = false, features = ["deflate"] }
 tempfile = "3"
 tokio = { version = "1.53", default-features = false, features = [
     "rt-multi-thread",

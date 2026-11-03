@@ -246,6 +246,8 @@ pub enum Text {
     EmptyUsesBackendDefault,
     PluginMissing,
     PluginMissingHint,
+    BackendSearchHint,
+    OpenApplicationFolder,
 
     // Diagnostics.
     LogLevel,
@@ -278,24 +280,11 @@ pub enum Text {
     Homepage,
     Documentation,
 
-    // Installation.
-    InstallTitle,
-    InstallPreparing,
-    InstallDownloading,
-    InstallExtracting,
-    InstallVerifying,
-    InstallDone,
-    InstallFailed,
-    InstallCancel,
-    InstallRestart,
-
     // The first-run dialog.
     NoBackendDialogTitle,
     NoBackendDialogBody,
     ContinueWithout,
     Quit,
-    InstallFfmpeg,
-    InstallGStreamer,
 
     // Confirmation dialogs.
     ConfirmRegenerateBody,
@@ -340,7 +329,8 @@ impl Text {
             Self::Backend => "Backend",
             Self::NoBackendTitle => "No playback backend",
             Self::NoBackendBody => {
-                "Parlor plays what a device sends through GStreamer or FFmpeg. Neither was found."
+                "Parlor plays what a device sends through GStreamer or FFmpeg. Neither was found \
+                 in lib or in the environment."
             }
             Self::Install => "Install",
             Self::ManageBackends => "Manage backends",
@@ -481,6 +471,11 @@ impl Text {
                 "Relevant only to a caller driving the stream directly; the receiver paces                  video itself."
             }
             Self::EmptyUsesBackendDefault => "Empty uses the backend's choice.",
+            Self::BackendSearchHint => {
+                "A backend is looked for in the lib folder beside the application first, then in \
+                 PARLOR_GSTREAMER_DIR or PARLOR_FFMPEG_DIR, then on the PATH."
+            }
+            Self::OpenApplicationFolder => "Open the application folder",
             Self::PluginMissing => "The GStreamer plugin is missing",
             Self::PluginMissingHint => {
                 "This build has no GStreamer plugin beside it. Install the GStreamer runtime                  and rebuild with the plugin."
@@ -514,23 +509,12 @@ impl Text {
             Self::LicenseBody => "GNU General Public License, version 3 or later.",
             Self::Homepage => "Project",
             Self::Documentation => "Documentation",
-            Self::InstallTitle => "Install a backend",
-            Self::InstallPreparing => "Preparing",
-            Self::InstallDownloading => "Downloading",
-            Self::InstallExtracting => "Extracting",
-            Self::InstallVerifying => "Checking",
-            Self::InstallDone => "Installed",
-            Self::InstallFailed => "The installation failed",
-            Self::InstallCancel => "Cancel",
-            Self::InstallRestart => "Start a new session to use it.",
             Self::NoBackendDialogTitle => "No playback backend found",
             Self::NoBackendDialogBody => {
-                "Parlor can receive a device now, but nothing would play. Install a backend,                  or continue and choose one later in Settings."
+                "Parlor can receive a device now, but nothing would play. Put the GStreamer runtime, or ffmpeg.exe and ffplay.exe, in the lib folder beside Parlor, or name one with PARLOR_GSTREAMER_DIR or PARLOR_FFMPEG_DIR, then restart Parlor."
             }
             Self::ContinueWithout => "Continue without playback",
             Self::Quit => "Quit",
-            Self::InstallFfmpeg => "Install FFmpeg",
-            Self::InstallGStreamer => "Install GStreamer",
             Self::ConfirmRegenerateBody => {
                 "Every device will see a new receiver and will have to pair again."
             }
@@ -565,7 +549,7 @@ impl Text {
             Self::Backend => "播放后端",
             Self::NoBackendTitle => "没有可用的播放后端",
             Self::NoBackendBody => {
-                "Parlor 通过 GStreamer 或 FFmpeg 播放设备投送的内容，但两者都没有找到。"
+                "Parlor 通过 GStreamer 或 FFmpeg 播放设备投送的内容，但 lib 和环境变量中都没有找到。"
             }
             Self::Install => "安装",
             Self::ManageBackends => "管理后端",
@@ -692,6 +676,11 @@ impl Text {
             Self::Pacing => "由后端控制视频节奏",
             Self::PacingHint => "仅对直接驱动视频流的调用者有意义，接收器自己会控制节奏。",
             Self::EmptyUsesBackendDefault => "留空表示使用后端的自动选择。",
+            Self::BackendSearchHint => {
+                "后端会先在与程序同级的 lib 目录中查找，其次查找 PARLOR_GSTREAMER_DIR 或 \
+                 PARLOR_FFMPEG_DIR，最后才查找 PATH。"
+            }
+            Self::OpenApplicationFolder => "打开程序所在目录",
             Self::PluginMissing => "缺少 GStreamer 插件",
             Self::PluginMissingHint => {
                 "此版本旁边没有 GStreamer 插件。请安装 GStreamer 运行时并重新构建插件。"
@@ -723,23 +712,14 @@ impl Text {
             Self::LicenseBody => "GNU 通用公共许可证第 3 版或更高版本。",
             Self::Homepage => "项目主页",
             Self::Documentation => "文档",
-            Self::InstallTitle => "安装后端",
-            Self::InstallPreparing => "准备中",
-            Self::InstallDownloading => "下载中",
-            Self::InstallExtracting => "解压中",
-            Self::InstallVerifying => "校验中",
-            Self::InstallDone => "已安装",
-            Self::InstallFailed => "安装失败",
-            Self::InstallCancel => "取消",
-            Self::InstallRestart => "开始新的会话即可使用。",
             Self::NoBackendDialogTitle => "没有找到播放后端",
             Self::NoBackendDialogBody => {
-                "Parlor 现在可以接收设备，但没有任何东西能播放。请安装一个后端，或者继续并在设置中选择。"
+                "Parlor 现在可以接收设备，但没有任何东西能播放。请把 GStreamer 运行时，或 ffmpeg.exe 与 \
+                 ffplay.exe，放到 Parlor 同级的 lib 目录中；也可以用 PARLOR_GSTREAMER_DIR 或 \
+                 PARLOR_FFMPEG_DIR 指定位置，然后重启 Parlor。"
             }
             Self::ContinueWithout => "不安装，继续",
             Self::Quit => "退出",
-            Self::InstallFfmpeg => "安装 FFmpeg",
-            Self::InstallGStreamer => "安装 GStreamer",
             Self::ConfirmRegenerateBody => "所有设备都会看到一个全新的接收器，需要重新配对。",
             Self::ConfirmForgetAllBody => "所有已记住的设备都需要重新配对。",
         }

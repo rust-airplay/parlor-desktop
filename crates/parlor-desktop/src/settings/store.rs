@@ -29,8 +29,6 @@ impl Paths {
     pub const CLIENTS_FILE: &'static str = "clients.json";
     /// The directory a run's log files are written to.
     pub const LOGS_DIR: &'static str = "logs";
-    /// The directory installed backends live in.
-    pub const BACKENDS_DIR: &'static str = "backends";
 
     /// The directory this user's installation keeps its files in.
     ///
@@ -78,16 +76,6 @@ impl Paths {
     /// The directory a run's log files are written to.
     pub fn logs(&self) -> PathBuf {
         self.join(Self::LOGS_DIR)
-    }
-
-    /// The directory installed backends live in.
-    pub fn backends(&self) -> PathBuf {
-        self.join(Self::BACKENDS_DIR)
-    }
-
-    /// Where one installed backend lives.
-    pub fn backend(&self, name: &str) -> PathBuf {
-        self.backends().join(name)
     }
 
     /// Where the request trace is appended.
