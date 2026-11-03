@@ -11,7 +11,7 @@ crates/parlor-desktop/       the application
   src/app.rs                 bootstrap: paths, logger, globals, window
   src/settings/              the settings document, storage, the identity seed and clients
   src/session/               one receiver on one thread, its configuration and its events
-  src/render/                backend choice, detection, the plugin loader, installation
+  src/render/                backend choice, detection and the plugin loader
   src/ui/                    the rail, the home page, the settings pages
   src/i18n/                  every label, English and Simplified Chinese
 crates/parlor-backend-api/   the ABI a renderer plugin implements
@@ -38,7 +38,13 @@ files.
 
 The application must start on a machine with no playback backend: that is why the
 GStreamer backend is a plugin and why nothing in `parlor-desktop` links a native library.
-A change that links one breaks the first-run installation path.
+A change that links one breaks the first run, where the window has to say where a backend
+goes.
+
+Backends are found in one order: the explicit setting, `lib` beside the executable, the
+backends' `AIRPLAY_*` variables, `PARLOR_GSTREAMER_DIR`/`PARLOR_FFMPEG_DIR`, and the `PATH`
+last. Nothing installs anything; a change that downloads or unpacks a backend is a change of
+policy, not of detection.
 
 The receiver reads its configuration once. A setting that needs to be live is a change to
 the receiver, not a change to this program; say so in the message.

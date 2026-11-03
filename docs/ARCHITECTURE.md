@@ -21,7 +21,7 @@ the only crate that links GStreamer.
 app.rs            files, logger, globals, window
 settings/         the settings document; storage; identity seed and remembered clients
 session/          a receiver on a thread, its configuration and its events; the log sink
-render/           backend choice; detection; the plugin loader; the installer
+render/           backend choice; detection; the plugin loader
 ui/               rail, home page, settings pages; the session's state as the window sees it
 i18n/             every label in English and Simplified Chinese
 state.rs          the global the window and the settings pages share
@@ -31,7 +31,7 @@ state.rs          the global the window and the settings pages share
 
 GStreamer is a native library that is linked, not run. A program that links it does not start
 on a machine without it: Windows resolves the import table before `main`, so the failure is a
-message box about a missing DLL, not a window that could offer to install one.
+message box about a missing DLL, not a window that could say where the runtime goes.
 
 The application therefore links nothing native. The GStreamer backend is a `cdylib` built
 from the same workspace, and the application opens it when a session asks for that backend.
@@ -71,17 +71,28 @@ An edit that is invalid is kept but reported: the home page shows the first prob
 starting a receiver with one is refused. Refusing to save a value a person typed would lose
 their work; refusing to start with an unusable one is honest.
 
-## Detection and installation
+## Detection
 
-`render/detect.rs` answers one question per backend: can this machine play through it? It
-looks for programs in the application's data directory first, then beside the executable, then
-on the `PATH`, and it runs each program once for its version.
+`render/detect.rs` answers one question per backend: can this machine play through it? The
+search is one order, the same for both backends:
 
-An installation is a download, an unpack, and one verification run, on a thread of its own.
-FFmpeg is an archive the installer keeps two files from. GStreamer is an installer package,
-unpacked with an administrative install into the application's data directory: it writes the
-same files an installation would and changes nothing about the machine, which is what makes it
-a per-user install with no administrator prompt.
+```text
+explicit setting -> lib beside the executable -> AIRPLAY_* -> PARLOR_* -> PATH
+```
+
+`lib` is the first answer because that is what a portable distribution controls: a runtime
+copied into `lib` is the runtime this build was made for, in either a flat layout, a `bin`
+directory, or a runtime unpacked under its own name. The environment comes second: a file the
+program cannot see inside `lib` can be named by `PARLOR_GSTREAMER_DIR` or `PARLOR_FFMPEG_DIR`,
+and the backends' own `AIRPLAY_GST_LAUNCH` and `AIRPLAY_FFMPEG` are honoured too.
+
+The `PATH` is last on purpose. A machine with a MinGW GStreamer on its `PATH` has a runtime
+whose DLLs have the same names as the MSVC one this plugin was built against, and picking that
+one is a crash rather than a session. A program found on the `PATH` is found only after
+everything this application controls has been ruled out.
+
+The program installs nothing. When neither backend is found, the window says where one goes:
+`lib` beside the executable, or an environment variable.
 
 ## The window
 

@@ -5,8 +5,8 @@ libraries.
 
 A device sees Parlor in its AirPlay menu, pairs with a PIN, and mirrors its screen or plays
 its audio. Parlor is the program around the receiver: it keeps the settings a person chooses,
-starts and stops the receiver, shows the PIN and what has connected, and installs what a
-machine is missing to play.
+starts and stops the receiver, shows the PIN and what has connected, and looks for what a
+machine has to play through before it starts.
 
 The protocol and the media handling are not here. `rust-airplay` answers the device and
 decrypts the streams; a playback backend decodes and presents them. Parlor owns the window,
@@ -18,8 +18,9 @@ the session's lifetime and both backends' requirements.
   the protocol asks for.
 - Plays through **FFmpeg** (two programs, no native build dependency) or **GStreamer**
   (a plugin loaded at run time), switched in the settings.
-- Detects a machine with no playback backend at startup and offers a one-click installation
-  for either, from the application itself.
+- Finds a backend in `lib` beside the application first, then through the environment
+  (`PARLOR_GSTREAMER_DIR`, `PARLOR_FFMPEG_DIR`, the backends' own `AIRPLAY_*` variables, and
+  finally the `PATH`). Nothing is downloaded or installed by the program.
 - Covers the receiver's whole configuration surface: identity, name, ports, bind address,
   announcement, pairing, password, client policy, remembered devices, the advertised
   display and frame rate, the feature bitmap, audio codec and latency, the volume curve,
@@ -56,7 +57,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Release
 
 Without the GStreamer development files the application still builds, and the GStreamer
 backend reports that its plugin is missing. That is deliberate: the application must start
-on a machine that has no GStreamer so that it can offer to install one.
+on a machine that has no GStreamer so that it can say where one goes.
 
 The plugin is a separate library, `parlor_gst_backend.dll`, built beside the executable.
 The application loads it only when the GStreamer backend is chosen.
@@ -82,7 +83,7 @@ directory, beside the executable, and in `PARLOR_GSTREAMER_DIR`.
 | Build dependency | none | GStreamer MSVC development files |
 | Run dependency | `ffmpeg.exe` and `ffplay.exe` | the GStreamer runtime, its plugins, and `gst-launch-1.0` |
 | Loaded | in the application | from `parlor_gst_backend.dll` |
-| Install from the application | yes: an official build archive | yes: the official runtime package, unpacked |
+| Where it is found | `lib` beside the executable, then `PARLOR_FFMPEG_DIR`, then `PATH` | `lib` beside the executable, then `PARLOR_GSTREAMER_DIR`, then `PATH` |
 
 Both backends play video in their own window: a backend receives coded frames and presents
 them through its own pipeline, and a frame never enters the window's compositor. Parlor is
@@ -92,8 +93,7 @@ the receiver's interface, not a video widget.
 
 Settings live in `%LOCALAPPDATA%\Parlor\settings.toml`, written on every change, and are
 a plain TOML document a person may read and edit while Parlor is closed. The same directory
-holds the identity seed, the remembered clients, the log, and any backend the application
-installed.
+holds the identity seed, the remembered clients and the log.
 
 Every value of the receiver's configuration has a page in the application;
 [docs/feature-inventory.md](docs/feature-inventory.md) maps each one to the page that shows
@@ -102,10 +102,10 @@ it and states what it does.
 ## Project layout
 
 ```
-crates/parlor-desktop/       the application: window, settings, session, backends, installer
+crates/parlor-desktop/       the application: window, settings, session, backends, detection
   src/app.rs                 bootstrap: files, logger, window
   src/settings/              the settings document, its storage and the identity
-  src/render/                backend choice, detection, the plugin loader, installation
+  src/render/                backend choice, detection and the plugin loader
   src/session/               a receiver on its own thread, and its events
   src/ui/                    the window: rail, home page, settings pages
   src/i18n/                  every label, in English and Chinese

@@ -61,16 +61,21 @@ cargo test -p parlor-desktop -- --ignored
 
 ## Packing an application
 
-`target\release\parlor-desktop.exe` is the application. Beside it belong:
+`target\release\parlor-desktop.exe` is the application, and `parlor_gst_backend.dll` belongs
+beside it. A distribution can carry either backend in a `lib` directory beside the executable:
 
-- `parlor_gst_backend.dll`, when the build included the plugin;
-- optionally a GStreamer runtime under `gstreamer\bin`, which the application prefers over a
-  system one;
-- optionally `ffmpeg.exe` and `ffplay.exe` under `backends\ffmpeg\bin`, which the FFmpeg
-  backend finds without a download.
+```text
+parlor-desktop.exe
+parlor_gst_backend.dll
+lib\gst-launch-1.0.exe, lib\*.dll           flat runtime copy
+lib\bin\gst-launch-1.0.exe, lib\bin\*.dll   or the runtime's own bin directory
+lib\gstreamer\bin\...                        or a runtime unpacked under its own name
+lib\ffmpeg.exe, lib\ffplay.exe               FFmpeg programs
+```
 
-None of these are required for the application to start. A machine with nothing installed
-shows the home page's "no playback backend" offer, and can install either backend from there.
+The application looks in `lib` first, then in `PARLOR_GSTREAMER_DIR` or `PARLOR_FFMPEG_DIR`,
+then on the `PATH`. Nothing is required for the application to start: a machine with neither
+backend shows the home page's "no playback backend" note, which says where one goes.
 
 ## Troubleshooting
 
@@ -78,9 +83,9 @@ shows the home page's "no playback backend" offer, and can install either backen
 `parlor_gst_backend.dll` beside the executable. Build it with
 `cargo build -p parlor-gst-backend` after running `setup-gstreamer.ps1`.
 
-**The plugin will not load** — the GStreamer runtime is absent or of another build. Set
-`PARLOR_GSTREAMER_DIR` to the runtime directory, or use the settings page to install it. A
-MinGW runtime from MSYS2 is not the runtime an MSVC plugin links against.
+**The plugin will not load** — the GStreamer runtime is absent or of another build. Copy the
+runtime into `lib` beside the executable, or set `PARLOR_GSTREAMER_DIR` to the runtime
+directory. A MinGW runtime from MSYS2 is not the runtime an MSVC plugin links against.
 
 **`pkg-config` cannot find `gstreamer-1.0`** — `PKG_CONFIG_PATH` does not point at the
 unpacked development package. `build.ps1` sets it; a manual `cargo build` needs it set by
