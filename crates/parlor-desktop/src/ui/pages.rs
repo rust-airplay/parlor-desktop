@@ -959,14 +959,24 @@ fn gstreamer_group(cx: &App) -> SettingGroup {
             |settings| &mut settings.backend.gstreamer.video_sink,
         ),
         input_item(
-            text(Text::Parser),
+            text(Text::H264Parser),
             |settings| settings.backend.gstreamer.h264_parser.clone(),
             |settings| &mut settings.backend.gstreamer.h264_parser,
         ),
         input_item(
-            text(Text::DecoderElement),
+            text(Text::H264Decoder),
             |settings| settings.backend.gstreamer.h264_decoder.clone(),
             |settings| &mut settings.backend.gstreamer.h264_decoder,
+        ),
+        input_item(
+            text(Text::H265Parser),
+            |settings| settings.backend.gstreamer.h265_parser.clone(),
+            |settings| &mut settings.backend.gstreamer.h265_parser,
+        ),
+        input_item(
+            text(Text::H265Decoder),
+            |settings| settings.backend.gstreamer.h265_decoder.clone(),
+            |settings| &mut settings.backend.gstreamer.h265_decoder,
         ),
         SettingItem::new(
             text(Text::WarmVideo),
