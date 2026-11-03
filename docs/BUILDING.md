@@ -5,7 +5,7 @@
 | Requirement | Why | Where |
 | --- | --- | --- |
 | Windows 10 or later, 64 bit | the application targets Windows | -- |
-| Rust 1.90+ with the MSVC toolchain | the workspace is edition 2024 | https://rustup.rs |
+| Rust 1.92+ with the MSVC toolchain | the workspace is edition 2024 | https://rustup.rs |
 | Visual Studio 2022 Build Tools, *Desktop development with C++* | GPUI compiles C++-adjacent parts and links the Windows SDK | https://visualstudio.microsoft.com/visual-cpp-build-tools/ |
 | CMake on `PATH` | GPUI's build scripts | https://cmake.org |
 | GStreamer MSVC development files, for the plugin | `gstreamer-sys` links the library | `scripts/setup-gstreamer.ps1` |

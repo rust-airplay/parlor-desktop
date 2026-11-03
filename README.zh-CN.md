@@ -25,7 +25,7 @@ Parlor 是一个基于 [rust-airplay](https://github.com/rust-airplay) 的桌面
 
 ## 构建与运行
 
-需要 Windows 10 及以上、Rust 1.90+（MSVC 工具链）、Visual Studio 2022 Build Tools 的
+需要 Windows 10 及以上、Rust 1.92+（MSVC 工具链）、Visual Studio 2022 Build Tools 的
 C++ 桌面开发负载，以及 `PATH` 中的 CMake。GStreamer 后端还需要 GStreamer 的 MSVC 开发包
 与 `pkg-config`。
 

@@ -34,7 +34,7 @@ The interface uses no emoji.
 ## Requirements
 
 - Windows 10 or later, 64 bit.
-- Rust 1.90 or newer with the MSVC toolchain.
+- Rust 1.92 or newer with the MSVC toolchain.
 - Visual Studio 2022 Build Tools with the *Desktop development with C++* workload, which is
   what GPUI compiles against.
 - CMake on `PATH` for the same reason.
