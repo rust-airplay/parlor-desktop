@@ -129,3 +129,33 @@ mod tests {
         assert_eq!(find_payload(root.path(), "nothing.exe"), None);
     }
 }
+
+#[cfg(test)]
+mod archive_tests {
+    use super::zip_files;
+
+    #[test]
+    fn only_the_named_files_are_unpacked() {
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/programs.zip");
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let binary = directory.path().join("bin");
+        let written = zip_files(&fixture, &["ffmpeg.exe", "ffplay.exe"], &binary)
+            .expect("the fixture to unpack");
+        assert_eq!(written.len(), 2);
+        assert!(binary.join("ffmpeg.exe").is_file());
+        assert!(binary.join("ffplay.exe").is_file());
+        assert!(!binary.join("ffprobe.exe").exists());
+        assert_eq!(std::fs::read(binary.join("ffmpeg.exe")).expect("the file"), b"decoder");
+    }
+
+    #[test]
+    fn a_missing_program_is_reported() {
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/programs.zip");
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let error = zip_files(&fixture, &["nothing.exe"], directory.path())
+            .expect_err("a program the archive does not hold");
+        assert!(error.contains("nothing.exe"));
+    }
+}

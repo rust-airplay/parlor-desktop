@@ -53,3 +53,24 @@ pub fn install(
         detect::version_of(&decoder).ok_or_else(|| format!("{} did not run", decoder.display()))?;
     Ok((version, binary))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::install;
+    use crate::settings::store::Paths;
+    use std::sync::atomic::AtomicBool;
+
+    #[test]
+    #[ignore = "downloads the release archive"]
+    fn an_installation_produces_a_working_decoder() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths::at(directory.path());
+        let cancelled = AtomicBool::new(false);
+        let mut report = |_progress| {};
+        let (version, location) =
+            install(&paths, &cancelled, &mut report).expect("an installation");
+        assert!(location.join("ffmpeg.exe").is_file());
+        assert!(location.join("ffplay.exe").is_file());
+        assert!(version.to_lowercase().contains("ffmpeg"), "{version}");
+    }
+}
