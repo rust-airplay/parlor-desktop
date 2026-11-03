@@ -1,0 +1,81 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/parlor-backend-api",
+    "crates/parlor-desktop",
+    "crates/parlor-gst-backend",
+]
+# The GStreamer plugin needs the GStreamer development files, which makes it the one crate
+# a machine without them cannot build. Leaving it out of the default set is what keeps
+# `cargo build` working on such a machine; `scripts/setup-gstreamer.ps1` installs the
+# files, and the build script then names the plugin explicitly.
+default-members = ["crates/parlor-backend-api", "crates/parlor-desktop"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/rust-airplay/parlor-desktop"
+repository = "https://github.com/rust-airplay/parlor-desktop"
+
+[workspace.dependencies]
+# The single UI dependency: GPUI Kit re-exports GPUI, its components, its base layer and its
+# assets. The version pins the GPUI snapshot the kit was released against.
+gpui-kit = "0.9.0"
+
+# The receiver and its two playback backends. The core and the GStreamer backend come from
+# the registry so that the FFmpeg backend's `rust-airplay` requirement resolves to the same
+# package; two copies of the crate would be two `Renderer` traits that cannot meet.
+rust-airplay = "0.3.2"
+rust-airplay-gstream = "0.3.1"
+# The FFmpeg backend is not published, so it is pinned to the revision this program was
+# written against.
+rust-airplay-ffmpeg = { git = "https://github.com/rust-airplay/rust-airplay-ffmpeg", rev = "eed040bbf25433d312a3919eb4876401db604a50" }
+
+parlor-backend-api = { path = "crates/parlor-backend-api" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+log = "0.4"
+async-channel = "2.5"
+libloading = "0.9"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+getrandom = "0.3"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_System_LibraryLoader",
+] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "http2"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+tempfile = "3"
+tokio = { version = "1.53", default-features = false, features = [
+    "rt-multi-thread",
+    "net",
+    "time",
+    "sync",
+    "io-util",
+    "macros",
+] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+dbg_macro = { level = "deny", priority = -1 }
+todo = { level = "deny", priority = -1 }
+unimplemented = { level = "deny", priority = -1 }
+print_stdout = { level = "deny", priority = -1 }
+print_stderr = { level = "deny", priority = -1 }
+
+# A debug build trains the eye; a release build is what a person runs. Both keep enough
+# symbols for a backtrace to be readable.
+[profile.dev]
+debug = "limited"
+
+[profile.release]
+debug = "line-tables-only"

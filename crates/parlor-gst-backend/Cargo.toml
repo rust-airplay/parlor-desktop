@@ -1,0 +1,23 @@
+[package]
+name = "parlor-gst-backend"
+description = "The GStreamer renderer for Parlor, loaded from the application at run time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "parlor_gst_backend"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+parlor-backend-api = { workspace = true }
+rust-airplay = { workspace = true }
+rust-airplay-gstream = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true

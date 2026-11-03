@@ -1,0 +1,18 @@
+# Build output
+/target/
+/crates/*/target/
+
+# Machine-local SDKs and staged runtimes (see scripts/setup-gstreamer.ps1)
+/.tools/
+/release/
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.user
+Thumbs.db
+.DS_Store
+
+# Run artefacts a session or a test may leave behind
+*.log
+/run*.log
