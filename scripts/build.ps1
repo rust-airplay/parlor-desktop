@@ -29,7 +29,6 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $gstreamer = Join-Path $root ".tools/gstreamer"
 $development = Join-Path $gstreamer "devel"
-$profile = if ($Release) { @("--release") } else { @() }
 
 if (Test-Path (Join-Path $development "lib/pkgconfig")) {
     $env:PKG_CONFIG_PATH = (Resolve-Path (Join-Path $development "lib/pkgconfig")).Path
@@ -42,12 +41,20 @@ if (Test-Path (Join-Path $development "lib/pkgconfig")) {
 Push-Location $root
 try {
     Write-Host "building the application"
-    & cargo build -p parlor-desktop @profile
+    if ($Release) {
+        & cargo build -p parlor-desktop --release
+    } else {
+        & cargo build -p parlor-desktop
+    }
     if ($LASTEXITCODE -ne 0) { throw "the application did not build" }
     if ($SkipPlugin) { return }
     if (-not $env:PKG_CONFIG_PATH) { return }
     Write-Host "building the GStreamer plugin"
-    & cargo build -p parlor-gst-backend @profile
+    if ($Release) {
+        & cargo build -p parlor-gst-backend --release
+    } else {
+        & cargo build -p parlor-gst-backend
+    }
     if ($LASTEXITCODE -ne 0) { throw "the plugin did not build" }
 } finally {
     Pop-Location
