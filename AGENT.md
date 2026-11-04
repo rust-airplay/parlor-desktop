@@ -28,7 +28,13 @@ A change is finished when all of these pass:
 cargo fmt --all -- --check
 cargo clippy -p parlor-desktop -p parlor-backend-api --all-targets -- -D warnings
 cargo test -p parlor-desktop -p parlor-backend-api
+cargo test -p parlor-desktop --bin parlor-desktop -- --ignored --test-threads=1
 ```
+
+The last line runs the tests that need what only a machine has: a playback backend, a
+network for the two installer downloads, and a free local port for the session tests. They
+are serialized because they share the process environment. `--test-threads=1` is not
+optional: one test sets `PARLOR_FFMPEG_DIR`, and a concurrent session test would pick it up.
 
 The plugin is built by `scripts/build.ps1` when `scripts/setup-gstreamer.ps1` has run. Its
 gate is the same `clippy` with `-p parlor-gst-backend`, on a machine with the development

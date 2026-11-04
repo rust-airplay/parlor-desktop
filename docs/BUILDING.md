@@ -56,8 +56,14 @@ The two renderer tests are ignored by default. They need a real backend:
 cargo build -p parlor-gst-backend
 copy target\debug\parlor_gst_backend.dll target\debug\deps\
 $env:PARLOR_GSTREAMER_DIR = "$PWD\.tools\gstreamer\runtime"
-cargo test -p parlor-desktop -- --ignored
+cargo test -p parlor-desktop --bin parlor-desktop -- --ignored --test-threads=1
 ```
+
+The ignored tests are serialized because several of them use the process environment, which
+is shared: one test sets `PARLOR_FFMPEG_DIR` for the length of its run, and a session test
+started at the same moment would discover that directory instead of the machine's own
+programs. Two of them download a backend package, so the suite needs a network and a few
+minutes.
 
 ## Packing an application
 
