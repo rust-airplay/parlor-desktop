@@ -226,7 +226,7 @@ fn network(cx: &App) -> SettingPage {
             },
         )
     };
-    SettingPage::new(text(Text::SettingsNetwork)).group(
+    let mut page = SettingPage::new(text(Text::SettingsNetwork)).group(
         SettingGroup::new().title(text(Text::SessionTitle)).items(vec![
             SettingItem::new(
                 text(Text::ControlPort),
@@ -279,6 +279,12 @@ fn network(cx: &App) -> SettingPage {
                     },
                 ),
             ),
+        ]),
+    );
+    // Four port numbers that the receiver only binds when the mode says "custom"; under
+    // any other mode they are values nothing reads.
+    if ports == "custom" {
+        page = page.group(SettingGroup::new().title(text(Text::MediaPorts)).items(vec![
             SettingItem::new(
                 text(Text::TimingPort),
                 port_field(|settings| &mut settings.network.timing, 1.0),
@@ -295,8 +301,9 @@ fn network(cx: &App) -> SettingPage {
                 text(Text::MirrorPort),
                 port_field(|settings| &mut settings.network.mirror, 1.0),
             ),
-        ]),
-    )
+        ]));
+    }
+    page
 }
 
 /// Who may pair and who may start a session.
@@ -308,7 +315,7 @@ fn security(cx: &App) -> SettingPage {
         PinChoice::Fixed => "fixed",
         PinChoice::Disabled => "disabled",
     };
-    SettingPage::new(text(Text::SettingsSecurity))
+    let mut page = SettingPage::new(text(Text::SettingsSecurity))
         .group(SettingGroup::new().title(text(Text::Pairing)).items(vec![
                 SettingItem::new(
                     text(Text::Pairing),
@@ -326,18 +333,6 @@ fn security(cx: &App) -> SettingPage {
                                 _ => PinChoice::OneTime,
                             };
                             state::update_settings(cx, |settings| settings.auth.pin = choice);
-                        },
-                    ),
-                ),
-                SettingItem::new(
-                    text(Text::PinDigits),
-                    SettingField::number_input(
-                        NumberFieldOptions { min: 0.0, max: 9999.0, step: 1.0 },
-                        |cx| f64::from(cx.global::<state::Parlor>().settings.auth.pin_digits),
-                        |value, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.auth.pin_digits = value.round().clamp(0.0, 9999.0) as u16;
-                            });
                         },
                     ),
                 ),
@@ -382,22 +377,6 @@ fn security(cx: &App) -> SettingPage {
                 )
                 .layout(Axis::Vertical).description(text(Text::RestrictClientsHint)),
                 SettingItem::new(
-                    text(Text::AllowedDevices),
-                    SettingField::input(
-                        |cx| {
-                            SharedString::from(join_list(
-                                &cx.global::<state::Parlor>().settings.auth.allow,
-                            ))
-                        },
-                        |value: SharedString, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.auth.allow = split_list(&value);
-                            });
-                        },
-                    ),
-                )
-                .layout(Axis::Vertical).description(text(Text::OnePerLine)),
-                SettingItem::new(
                     text(Text::BlockedDevices),
                     SettingField::input(
                         |cx| {
@@ -413,7 +392,45 @@ fn security(cx: &App) -> SettingPage {
                     ),
                 ),
             ]))
-        .group(SettingGroup::new().title(text(Text::KnownDevices)).item(known_devices(lang)))
+        .group(SettingGroup::new().title(text(Text::KnownDevices)).item(known_devices(lang)));
+    if pin == "fixed" {
+        page = page.group(SettingGroup::new().title(text(Text::PinDigits)).item(SettingItem::new(
+            text(Text::PinDigits),
+            SettingField::number_input(
+                NumberFieldOptions { min: 0.0, max: 9999.0, step: 1.0 },
+                |cx| f64::from(cx.global::<state::Parlor>().settings.auth.pin_digits),
+                |value, cx| {
+                    state::update_settings(cx, |settings| {
+                        settings.auth.pin_digits = value.round().clamp(0.0, 9999.0) as u16;
+                    });
+                },
+            ),
+        )));
+    }
+    if cx.global::<state::Parlor>().settings.auth.restrict {
+        page = page.group(
+            SettingGroup::new().title(text(Text::AllowedDevices)).item(
+                SettingItem::new(
+                    text(Text::AllowedDevices),
+                    SettingField::input(
+                        |cx| {
+                            SharedString::from(join_list(
+                                &cx.global::<state::Parlor>().settings.auth.allow,
+                            ))
+                        },
+                        |value: SharedString, cx| {
+                            state::update_settings(cx, |settings| {
+                                settings.auth.allow = split_list(&value);
+                            });
+                        },
+                    ),
+                )
+                .layout(Axis::Vertical)
+                .description(text(Text::OnePerLine)),
+            ),
+        );
+    }
+    page
 }
 
 /// The list of remembered devices, with the two destructive actions.

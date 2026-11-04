@@ -106,3 +106,33 @@ impl Settings {
         problems
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+
+    #[test]
+    fn a_session_field_change_is_pending() {
+        let applied = Settings::new();
+        let mut changed = Settings::new();
+        changed.network.port = 7100;
+        assert!(changed.session_differs(&applied));
+    }
+
+    #[test]
+    fn appearance_and_log_level_are_not_pending() {
+        let applied = Settings::new();
+        let mut changed = Settings::new();
+        changed.appearance.theme = crate::settings::ThemeChoice::Dark;
+        changed.appearance.language = crate::settings::LanguageChoice::Chinese;
+        changed.diagnostics.log_level = crate::settings::LogLevel::Trace;
+        assert!(!changed.session_differs(&applied));
+    }
+
+    #[test]
+    fn a_diagnostic_file_switch_is_pending() {
+        let applied = Settings::new();
+        let mut changed = Settings::new();
+        changed.diagnostics.trace_log = true;
+        assert!(changed.session_differs(&applied));
+    }
+}
