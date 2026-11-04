@@ -36,6 +36,12 @@ network for the two installer downloads, and a free local port for the session t
 are serialized because they share the process environment. `--test-threads=1` is not
 optional: one test sets `PARLOR_FFMPEG_DIR`, and a concurrent session test would pick it up.
 
+The first command also runs the window's own tests (`ui::tests`): they open a headless
+window, click the real controls and read the document those clicks wrote. A dropdown must
+hand its writer the value the setting is stored as, not the label the user sees, and the
+home quick choices must reach both the in-memory document and the file on disk. No display
+and no backend is needed.
+
 The plugin is built by `scripts/build.ps1` when `scripts/setup-gstreamer.ps1` has run. Its
 gate is the same `clippy` with `-p parlor-gst-backend`, on a machine with the development
 files.

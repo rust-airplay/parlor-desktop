@@ -59,6 +59,10 @@ $env:PARLOR_GSTREAMER_DIR = "$PWD\.tools\gstreamer\runtime"
 cargo test -p parlor-desktop --bin parlor-desktop -- --ignored --test-threads=1
 ```
 
+The window tests (`ui::tests`) need neither a display nor a backend: they open a headless
+GPUI window, click the controls the way a pointer would and assert on the settings document
+that the click wrote. They come with the normal `cargo test` run.
+
 The ignored tests are serialized because several of them use the process environment, which
 is shared: one test sets `PARLOR_FFMPEG_DIR` for the length of its run, and a session test
 started at the same moment would discover that directory instead of the machine's own
