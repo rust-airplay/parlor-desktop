@@ -53,6 +53,12 @@ pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
         platform::add_dll_directory(directory);
     }
     if let Some(launch) = launch {
+        // GStreamer loads its plugins with the altered search path, which consults PATH and
+        // not the directories AddDllDirectory recorded. Without the runtime on PATH a plugin
+        // such as gstlibav cannot find avcodec, so the runtime's bin goes to the front.
+        if let Some(directory) = launch.parent() {
+            platform::prepend_path(directory);
+        }
         set_launch_program(&launch);
     }
     let options = GStreamerOptions {
@@ -197,6 +203,27 @@ mod platform {
             let name = CStr::from_bytes_with_nul(name).ok()?;
             let address = unsafe { GetProcAddress(self.module, name.as_ptr().cast()) }?;
             Some(address as *mut c_void)
+        }
+    }
+
+    /// Puts a directory at the front of the process PATH, once.
+    ///
+    /// GStreamer opens plugins with `LOAD_WITH_ALTERED_SEARCH_PATH`, whose dependency search
+    /// includes PATH but not the user directories AddDllDirectory records. A runtime that is
+    /// not on PATH therefore loads its core but not its plugins.
+    pub fn prepend_path(directory: &Path) {
+        let Ok(current) = std::env::var("PATH") else {
+            return;
+        };
+        let directory = directory.to_string_lossy();
+        if current.split(';').any(|entry| entry.eq_ignore_ascii_case(directory.as_ref())) {
+            return;
+        }
+        let joined = format!("{directory};{current}");
+        // SAFETY: the variable is changed before a session or a plugin scan exists; the
+        // plugin reads it when it loads, and no other thread of this program writes PATH.
+        unsafe {
+            std::env::set_var("PATH", joined);
         }
     }
 

@@ -260,4 +260,54 @@ mod tests {
         let reason = failure.expect("a reported failure");
         assert!(reason.contains("bind"), "{reason}");
     }
+
+    #[test]
+    #[ignore = "needs the MSVC GStreamer runtime the scripts unpack"]
+    fn a_gstreamer_session_starts_and_stops() {
+        let launch = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.tools/gstreamer/runtime/bin/gst-launch-1.0.exe");
+        if !launch.is_file() {
+            return;
+        }
+        let port = free_port();
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths::at(directory.path());
+        let mut settings = Settings::new();
+        settings.backend.kind = BackendKind::GStreamer;
+        settings.backend.gstreamer.launch_path = launch.display().to_string();
+        settings.network.port = port;
+        settings.network.bind = "127.0.0.1".to_owned();
+        settings.network.advertise = false;
+        settings.auth.pin = crate::settings::PinChoice::Disabled;
+        let mut session = Session::start(
+            settings,
+            Identity::test_identity([6; 32]),
+            paths,
+            LogHandle::detached(),
+        )
+        .expect("a receiver thread");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut started = false;
+        while Instant::now() < deadline {
+            match session.events().try_recv() {
+                Ok(Event::Started { .. }) => {
+                    started = true;
+                    break;
+                }
+                Ok(Event::Failed(reason)) => panic!("the receiver failed: {reason}"),
+                Ok(_) | Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        assert!(started, "the GStreamer session reported a port");
+        session.stop();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            match session.events().try_recv() {
+                Ok(Event::Stopped) => return,
+                Ok(Event::Failed(reason)) => panic!("the receiver failed: {reason}"),
+                Ok(_) | Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        panic!("the GStreamer session did not stop");
+    }
 }

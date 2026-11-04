@@ -110,6 +110,17 @@ runtime is found either way. A MinGW runtime from MSYS2 cannot be used: its libr
 `libgstreamer-1.0-0.dll` while the plugin imports `gstreamer-1.0-0.dll`, and detection now
 reports that as a missing runtime so the installer can supply the MSVC one.
 
+**A debug build stops with "set_focus called more than once in a single frame"** — that is a
+GPUI assertion compiled in only when debug assertions are on. It fires while a video window
+takes and returns focus, and release builds log a warning and carry on. Use a release build
+(`scripts\build.ps1 -Release`) for anything that opens a session.
+
+**GStreamer plugins fail to load ("找不到指定的模块")** — GStreamer opens its plugins with the
+altered search path, which reads `PATH` and not the directories the application registers for
+the process. The application puts the runtime's `bin` on `PATH` before it builds a GStreamer
+renderer, which is what lets `gstlibav` find `avcodec`; a runtime whose DLLs are elsewhere
+(such as the MSYS2 build) still cannot be used.
+
 **`pkg-config` cannot find `gstreamer-1.0`** — `PKG_CONFIG_PATH` does not point at the
 unpacked development package. `build.ps1` sets it; a manual `cargo build` needs it set by
 hand.

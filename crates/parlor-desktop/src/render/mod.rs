@@ -104,5 +104,13 @@ mod tests {
         // only the directory of the program the settings name can resolve the plugin imports.
         let renderer = build(&settings).expect("a GStreamer renderer from the named runtime");
         assert!(!format!("{renderer:?}").is_empty());
+        // GStreamer opens its plugins with the altered search path, which reads PATH and not
+        // the directories added for the process, so the runtime has to be on PATH by now.
+        let bin = launch.parent().expect("a bin directory");
+        let path = std::env::var("PATH").unwrap_or_default();
+        assert!(
+            path.split(';').any(|entry| std::path::Path::new(entry) == bin),
+            "the runtime is on PATH: {path}"
+        );
     }
 }
