@@ -25,6 +25,8 @@ async-channel = { workspace = true }
 libloading = { workspace = true }
 chrono = { workspace = true }
 getrandom = { workspace = true }
+reqwest = { workspace = true }
+zip = { workspace = true }
 windows-sys = { workspace = true }
 
 [dev-dependencies]

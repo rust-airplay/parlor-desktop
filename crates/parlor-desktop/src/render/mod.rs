@@ -10,6 +10,7 @@
 pub mod detect;
 pub mod ffmpeg;
 pub mod gst;
+pub mod install;
 
 use std::sync::Arc;
 

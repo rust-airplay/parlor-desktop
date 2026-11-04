@@ -20,7 +20,9 @@ the session's lifetime and both backends' requirements.
   (a plugin loaded at run time), switched in the settings.
 - Finds a backend in `lib` beside the application first, then through the environment
   (`PARLOR_GSTREAMER_DIR`, `PARLOR_FFMPEG_DIR`, the backends' own `AIRPLAY_*` variables, and
-  finally the `PATH`). Nothing is downloaded or installed by the program.
+  finally the `PATH`).
+- Installs a missing backend from the application itself, into the user's Parlor directory,
+  and records that directory in the same environment variable detection reads.
 - Covers the receiver's whole configuration surface: identity, name, ports, bind address,
   announcement, pairing, password, client policy, remembered devices, the advertised
   display and frame rate, the feature bitmap, audio codec and latency, the volume curve,
@@ -84,6 +86,7 @@ directory, beside the executable, and in `PARLOR_GSTREAMER_DIR`.
 | Run dependency | `ffmpeg.exe` and `ffplay.exe` | the GStreamer runtime, its plugins, and `gst-launch-1.0` |
 | Loaded | in the application | from `parlor_gst_backend.dll` |
 | Where it is found | `lib` beside the executable, then `PARLOR_FFMPEG_DIR`, then `PATH` | `lib` beside the executable, then `PARLOR_GSTREAMER_DIR`, then `PATH` |
+| Install from the application | yes: the project's release archive | yes: the official runtime package, unpacked |
 
 Both backends play video in their own window: a backend receives coded frames and presents
 them through its own pipeline, and a frame never enters the window's compositor. Parlor is
@@ -93,7 +96,9 @@ the receiver's interface, not a video widget.
 
 Settings live in `%LOCALAPPDATA%\Parlor\settings.toml`, written on every change, and are
 a plain TOML document a person may read and edit while Parlor is closed. The same directory
-holds the identity seed, the remembered clients and the log.
+holds the identity seed, the remembered clients, the log, and any backend the application
+installed (under `backends`). An installed backend is recorded in `PARLOR_GSTREAMER_DIR` or
+`PARLOR_FFMPEG_DIR` for the current user, which is how the next run finds it.
 
 Every value of the receiver's configuration has a page in the application;
 [docs/feature-inventory.md](docs/feature-inventory.md) maps each one to the page that shows
@@ -102,7 +107,7 @@ it and states what it does.
 ## Project layout
 
 ```
-crates/parlor-desktop/       the application: window, settings, session, backends, detection
+crates/parlor-desktop/       the application: window, settings, session, backends, installer
   src/app.rs                 bootstrap: files, logger, window
   src/settings/              the settings document, its storage and the identity
   src/render/                backend choice, detection and the plugin loader

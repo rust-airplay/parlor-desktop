@@ -10,6 +10,7 @@
 //! caller runs it on a thread and reads [Progress] as it goes.
 
 mod download;
+mod environment;
 mod extract;
 mod ffmpeg;
 mod gstreamer;
@@ -120,7 +121,24 @@ impl Installer {
             Target::GStreamer => gstreamer::install(&self.paths, &self.cancel, report),
         };
         match outcome {
-            Ok((version, location)) => report(Progress::Done { version, location }),
+            Ok((version, location)) => {
+                // Detection reads lib first and the environment second, so an installation
+                // that is not recorded in the environment is an installation nothing finds.
+                let root = self.paths.backend(self.target.directory());
+                match environment::remember(self.target, &root) {
+                    Ok(()) => log::info!(
+                        "recorded {} in {}",
+                        root.display(),
+                        environment::variable(self.target)
+                    ),
+                    Err(error) => log::warn!(
+                        "the installation is at {}, but {} could not be written: {error}",
+                        root.display(),
+                        environment::variable(self.target)
+                    ),
+                }
+                report(Progress::Done { version, location })
+            }
             Err(message) => {
                 let _ = remove(self.target, &self.paths);
                 report(Progress::Failed(message));
@@ -150,9 +168,15 @@ pub fn installed(target: Target, paths: &Paths) -> bool {
 /// what a file still open in a running session looks like.
 pub fn remove(target: Target, paths: &Paths) -> Result<(), String> {
     let directory = paths.backend(target.directory());
-    match std::fs::remove_dir_all(&directory) {
+    let result = match std::fs::remove_dir_all(&directory) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!("cannot remove {}: {error}", directory.display())),
+    };
+    if result.is_ok()
+        && let Err(error) = environment::forget(target, &directory)
+    {
+        log::warn!("the files are gone, but the environment still names them: {error}");
     }
+    result
 }

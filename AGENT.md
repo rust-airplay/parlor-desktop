@@ -43,8 +43,13 @@ goes.
 
 Backends are found in one order: the explicit setting, `lib` beside the executable, the
 backends' `AIRPLAY_*` variables, `PARLOR_GSTREAMER_DIR`/`PARLOR_FFMPEG_DIR`, and the `PATH`
-last. Nothing installs anything; a change that downloads or unpacks a backend is a change of
-policy, not of detection.
+last.
+
+An installation under the data directory is found through the environment, not through a
+branch in detection: the installer writes `PARLOR_GSTREAMER_DIR` or `PARLOR_FFMPEG_DIR` for
+the current user (HKCU) and sets it in this process, and a removal clears it. Adding the
+data directory to detection instead would make two sources of truth and hide a variable
+the user set by hand.
 
 The receiver reads its configuration once. A setting that needs to be live is a change to
 the receiver, not a change to this program; say so in the message.

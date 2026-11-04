@@ -80,7 +80,7 @@ pub fn update_identity(cx: &mut App, edit: impl FnOnce(&mut Identity)) {
 /// Looks for the backends again, after an installation or a removal.
 pub fn reprobe(cx: &mut App) {
     cx.update_global::<Parlor, _>(|parlor, cx| {
-        parlor.backends = detect::probe(&parlor.settings, &parlor.paths);
+        parlor.backends = detect::probe(&parlor.settings);
         cx.refresh_windows();
     });
 }

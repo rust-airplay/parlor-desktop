@@ -36,11 +36,12 @@ pub fn run() {
         Settings::new()
     });
     log.set_level(settings.diagnostics.log_level.filter());
+    log::info!("language  {}", crate::i18n::describe_system_language());
     let identity = Identity::load(&paths).unwrap_or_else(|error| {
         log::error!("{error}");
         Identity::test_identity([0x42; 32])
     });
-    let backends = crate::render::detect::probe(&settings, &paths);
+    let backends = crate::render::detect::probe(&settings);
     log::info!("GStreamer {}", describe(&backends.gstreamer));
     log::info!("FFmpeg    {}", describe(&backends.ffmpeg));
     let problems = settings.problems();

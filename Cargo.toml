@@ -43,10 +43,14 @@ async-channel = "2.5"
 libloading = "0.9"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 getrandom = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "http2"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 tempfile = "3"
 tokio = { version = "1.53", default-features = false, features = [

@@ -75,7 +75,12 @@ lib\ffmpeg.exe, lib\ffplay.exe               FFmpeg programs
 
 The application looks in `lib` first, then in `PARLOR_GSTREAMER_DIR` or `PARLOR_FFMPEG_DIR`,
 then on the `PATH`. Nothing is required for the application to start: a machine with neither
-backend shows the home page's "no playback backend" note, which says where one goes.
+backend shows the home page's "no playback backend" note, which offers to install one and says
+where a hand-placed one goes.
+
+An installation from the application goes to `%LOCALAPPDATA%\\Parlor\\backends\\<backend>`
+and writes that directory into the same `PARLOR_*` variable, for the current user. Nothing is
+installed machine-wide and no administrator prompt is involved.
 
 ## Troubleshooting
 
@@ -83,9 +88,10 @@ backend shows the home page's "no playback backend" note, which says where one g
 `parlor_gst_backend.dll` beside the executable. Build it with
 `cargo build -p parlor-gst-backend` after running `setup-gstreamer.ps1`.
 
-**The plugin will not load** — the GStreamer runtime is absent or of another build. Copy the
-runtime into `lib` beside the executable, or set `PARLOR_GSTREAMER_DIR` to the runtime
-directory. A MinGW runtime from MSYS2 is not the runtime an MSVC plugin links against.
+**The plugin will not load** — the GStreamer runtime is absent or of another build. Install it
+from Settings → Playback, copy a runtime into `lib` beside the executable, or set
+`PARLOR_GSTREAMER_DIR` to the runtime directory. A MinGW runtime from MSYS2 is not the runtime
+an MSVC plugin links against.
 
 **`pkg-config` cannot find `gstreamer-1.0`** — `PKG_CONFIG_PATH` does not point at the
 unpacked development package. `build.ps1` sets it; a manual `cargo build` needs it set by

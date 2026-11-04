@@ -728,6 +728,33 @@ fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
         ),
         availability_item(text, lang, Target::GStreamer, backends.gstreamer.clone(), paths.clone()),
         availability_item(text, lang, Target::Ffmpeg, backends.ffmpeg.clone(), paths.clone()),
+        SettingItem::render(move |_, _window, cx| {
+            let lang = state::lang(cx);
+            let text = move |label: Text| label.of(lang);
+            let folder = std::env::current_exe()
+                .ok()
+                .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(text(Text::BackendSearchHint)),
+                )
+                .when_some(folder, |this, folder| {
+                    this.child(
+                        Button::new("open-application-folder")
+                            .xsmall()
+                            .outline()
+                            .label(text(Text::OpenApplicationFolder))
+                            .on_click(move |_, _, _| {
+                                let _ = std::process::Command::new("explorer").arg(&folder).spawn();
+                            }),
+                    )
+                })
+        }),
     ])];
     if let Some((target, progress)) = install {
         groups.push(SettingGroup::new().title(text(Text::InstallTitle)).item(SettingItem::render(
@@ -774,6 +801,10 @@ fn availability_item(
         let present = install::installed(target, &paths);
         let installable =
             !matches!(availability, Availability::Missing { part: MissingPart::Plugin, .. });
+        let location = match &availability {
+            Availability::Ready { location, .. } => Some(location.display().to_string()),
+            Availability::Missing { .. } => None,
+        };
         let sender = cx.global::<state::Parlor>().installs.clone();
         let remove_paths = paths.clone();
         let install_sender = sender.clone();
@@ -782,6 +813,9 @@ fn availability_item(
             .gap_2()
             .items_center()
             .child(div().text_xs().text_color(colour).child(summary))
+            .when_some(location, |this, location| {
+                this.child(div().text_xs().text_color(cx.theme().muted_foreground).child(location))
+            })
             .when(!present && installable, |this| {
                 this.child(
                     Button::new(SharedString::from(format!("install-{}", target.directory())))

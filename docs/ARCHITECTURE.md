@@ -91,8 +91,19 @@ whose DLLs have the same names as the MSVC one this plugin was built against, an
 one is a crash rather than a session. A program found on the `PATH` is found only after
 everything this application controls has been ruled out.
 
-The program installs nothing. When neither backend is found, the window says where one goes:
-`lib` beside the executable, or an environment variable.
+An installation is a download, an unpack and one verification run, on a thread of its own,
+under `backends` in the application's data directory. It is recorded the way detection reads:
+the installer writes `PARLOR_GSTREAMER_DIR` or `PARLOR_FFMPEG_DIR` for the current user
+(HKCU\\Environment, no administrator rights), broadcasts the change, and sets the same value in
+the running process so the next session finds it without a restart. A removal clears the
+variable when it still names that directory.
+
+That is deliberate: detection has one list of places, and an installation adds itself to a
+place on that list instead of adding a second list. A data directory that detection also knew
+about would make two sources of truth, and would hide a variable a person set by hand.
+
+When neither backend is found, the window offers to install one and says where a hand-placed
+one goes: `lib` beside the executable, or the same environment variable.
 
 ## The window
 
