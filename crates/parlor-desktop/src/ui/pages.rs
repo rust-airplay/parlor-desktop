@@ -734,9 +734,9 @@ fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
             let folder = std::env::current_exe()
                 .ok()
                 .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
-            h_flex()
-                .gap_2()
-                .items_center()
+            v_flex()
+                .gap_1()
+                .items_start()
                 .child(
                     div()
                         .text_xs()
