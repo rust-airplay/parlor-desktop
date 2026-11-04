@@ -156,6 +156,18 @@ fn open_log_file(path: &std::path::Path) -> Option<std::fs::File> {
 }
 
 #[cfg(test)]
+impl LogHandle {
+    /// A handle that records nothing and writes no file, for a test that needs one to exist.
+    pub fn detached() -> Self {
+        Self {
+            lines: Arc::new(Mutex::new(VecDeque::new())),
+            level: Arc::new(AtomicUsize::new(log::LevelFilter::Off as usize)),
+            file: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::{CAPACITY, Line, LogHandle};
     use chrono::Local;

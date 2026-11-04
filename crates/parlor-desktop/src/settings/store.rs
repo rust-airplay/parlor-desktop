@@ -283,6 +283,105 @@ mod tests {
     }
 
     #[test]
+    fn every_field_survives_a_round_trip() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths::at(directory.path());
+        let settings = sample_document();
+        save(&paths, &settings).expect("a written document");
+        let loaded = load(&paths).expect("the written document");
+        assert_eq!(loaded, settings);
+    }
+
+    /// A document with every setting away from its default.
+    fn sample_document() -> Settings {
+        use crate::settings::backend::{FfmpegSettings, GStreamerSettings};
+        use crate::settings::{
+            AudioCodecChoice, AudioSettings, AuthSettings, BackendKind, BackendSettings,
+            DiagnosticsSettings, DisplaySettings, LanguageChoice, LogLevel, NetworkSettings,
+            PinChoice, PortsMode, ReceiverSettings, ThemeChoice, VideoCodecChoice, VideoSettings,
+        };
+        Settings {
+            schema_version: Settings::SCHEMA_VERSION,
+            appearance: crate::settings::Appearance {
+                theme: ThemeChoice::Light,
+                language: LanguageChoice::Chinese,
+            },
+            receiver: ReceiverSettings {
+                name: "Study".to_owned(),
+                device_id: "aa:bb:cc:dd:ee:ff".to_owned(),
+                pace_video: true,
+                nohold: true,
+                feedback_timeout: Some(9),
+            },
+            display: DisplaySettings {
+                width: 2560,
+                height: 1440,
+                refresh_rate: 120.0,
+                max_fps: 60,
+                overscanned: true,
+            },
+            auth: AuthSettings {
+                pin: PinChoice::Fixed,
+                pin_digits: 4321,
+                password: "secret".to_owned(),
+                restrict: true,
+                allow: vec!["one".to_owned()],
+                block: vec!["two".to_owned()],
+                remember_clients: false,
+            },
+            network: NetworkSettings {
+                port: 7199,
+                bind: "127.0.0.1".to_owned(),
+                advertise: false,
+                ports: PortsMode::Custom,
+                timing: 7011,
+                control: 6001,
+                data: 6000,
+                mirror: 7100,
+            },
+            video: VideoSettings { hevc: true, hls: true, slideshow: false },
+            audio: AudioSettings {
+                codec: AudioCodecChoice::Alac,
+                latency_ms: 123,
+                initial_volume: 40,
+                taper: true,
+                low_db: -20.0,
+                high_db: -2.0,
+            },
+            backend: BackendSettings {
+                kind: BackendKind::Ffmpeg,
+                ffmpeg: FfmpegSettings {
+                    decoder: "C:/ffmpeg/ffmpeg.exe".to_owned(),
+                    audio_sink: "ffplay -nodisp".to_owned(),
+                    video_sink: "ffplay -framedrop".to_owned(),
+                    warm_video: true,
+                    warm_codec: VideoCodecChoice::H265,
+                    pacing: false,
+                },
+                gstreamer: GStreamerSettings {
+                    launch_path: "C:/gst/bin/gst-launch-1.0.exe".to_owned(),
+                    audio_sink: "wasapisink".to_owned(),
+                    video_sink: "d3d11videosink".to_owned(),
+                    h264_parser: "h264parse".to_owned(),
+                    h264_decoder: "avdec_h264".to_owned(),
+                    h265_parser: "h265parse".to_owned(),
+                    h265_decoder: "avdec_h265".to_owned(),
+                    warm_video: true,
+                    pacing: false,
+                },
+            },
+            diagnostics: DiagnosticsSettings {
+                log_level: LogLevel::Debug,
+                trace_log: true,
+                dump_video: true,
+                dump_audio: true,
+                streaming_reports: true,
+                setup_body: true,
+            },
+        }
+    }
+
+    #[test]
     fn an_unreadable_document_is_reported() {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let paths = Paths::at(directory.path());

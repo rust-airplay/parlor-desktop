@@ -137,3 +137,127 @@ fn serve(
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::{Duration, Instant};
+
+    use super::Session;
+    use crate::session::event::Event;
+    use crate::session::logging::LogHandle;
+    use crate::settings::identity::Identity;
+    use crate::settings::store::Paths;
+    use crate::settings::{BackendKind, Settings};
+
+    /// A port the system has just handed out and taken back.
+    fn free_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        listener.local_addr().expect("an address").port()
+    }
+
+    #[test]
+    #[ignore = "needs a playback backend and binds a local port"]
+    fn a_session_answers_rtsp_on_its_port_and_stops() {
+        let port = free_port();
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths::at(directory.path());
+        let mut settings = Settings::new();
+        settings.network.port = port;
+        settings.network.bind = "127.0.0.1".to_owned();
+        settings.network.advertise = false;
+        settings.auth.pin = crate::settings::PinChoice::Disabled;
+        settings.backend.kind = BackendKind::Ffmpeg;
+        let mut session = Session::start(
+            settings,
+            Identity::test_identity([9; 32]),
+            paths,
+            LogHandle::detached(),
+        )
+        .expect("a receiver thread");
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut started = false;
+        while Instant::now() < deadline {
+            match session.events().try_recv() {
+                Ok(Event::Started { .. }) => {
+                    started = true;
+                    break;
+                }
+                Ok(Event::Failed(reason)) => panic!("the receiver failed: {reason}"),
+                Ok(_) | Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        assert!(started, "the receiver did not report a port");
+
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the control port");
+        stream.set_read_timeout(Some(Duration::from_secs(5))).expect("a read timeout");
+        stream
+            .write_all(b"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\nUser-Agent: ParlorTest/0.1\r\n\r\n")
+            .expect("a request");
+        let mut buffer = [0u8; 4096];
+        let read = stream.read(&mut buffer).expect("a response");
+        let response = String::from_utf8_lossy(&buffer[..read]);
+        assert!(response.contains("RTSP/1.0 200"), "response: {response}");
+
+        session.stop();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut stopped = false;
+        while Instant::now() < deadline {
+            match session.events().try_recv() {
+                Ok(Event::Stopped) => {
+                    stopped = true;
+                    break;
+                }
+                Ok(Event::Failed(reason)) => panic!("the receiver failed: {reason}"),
+                Ok(_) | Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        assert!(stopped, "the receiver did not report that it stopped");
+    }
+
+    #[test]
+    #[ignore = "needs a playback backend and binds a local port"]
+    fn a_port_in_use_is_reported_instead_of_serving() {
+        let settings = Settings::new();
+        if !crate::render::detect::probe(&settings).any_ready() {
+            return;
+        }
+        let port = free_port();
+        let held = std::net::TcpListener::bind(("127.0.0.1", port)).expect("a held port");
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths::at(directory.path());
+        let mut settings = Settings::new();
+        settings.network.port = port;
+        settings.network.bind = "127.0.0.1".to_owned();
+        settings.network.advertise = false;
+        settings.auth.pin = crate::settings::PinChoice::Disabled;
+        settings.backend.kind = BackendKind::Ffmpeg;
+        let session = Session::start(
+            settings,
+            Identity::test_identity([8; 32]),
+            paths,
+            LogHandle::detached(),
+        )
+        .expect("a receiver thread");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut failure = None;
+        while Instant::now() < deadline {
+            match session.events().try_recv() {
+                Ok(Event::Failed(reason)) => {
+                    failure = Some(reason);
+                    break;
+                }
+                Ok(Event::Started { .. }) => {
+                    // The window is told the configured port as soon as the thread is up,
+                    // so an optimistic Started may arrive before the bind is attempted.
+                    // The failure that follows is what this test is about.
+                }
+                Ok(_) | Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        drop(held);
+        let reason = failure.expect("a reported failure");
+        assert!(reason.contains("bind"), "{reason}");
+    }
+}
