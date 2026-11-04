@@ -38,7 +38,9 @@ impl Render for ProbeView {
             SettingItem::new(
                 "Theme",
                 SettingField::dropdown(
-                    vec![("system".into(), "System".into()), ("light".into(), "Light".into())],
+                    // The Appearance page's own options: the click below must land on the
+                    // option whose value is "light", not on its label.
+                    super::pages::theme_options(crate::i18n::Lang::English),
                     |cx| SharedString::from(cx.global::<Probe>().theme.clone()),
                     |value: SharedString, cx| {
                         cx.update_global::<Probe, _>(|probe, _| probe.theme = value.to_string());

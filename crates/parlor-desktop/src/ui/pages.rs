@@ -138,6 +138,18 @@ fn general(cx: &App) -> SettingPage {
             ]))
 }
 
+/// The theme choices, as the (value, label) pairs the field shows and answers with.
+///
+/// Shared with the window tests: they click the option and expect the writer to receive the
+/// stored value, so a swap back to (label, value) fails a test instead of a user noticing.
+pub(super) fn theme_options(lang: crate::i18n::Lang) -> Vec<(SharedString, SharedString)> {
+    vec![
+        ("system".into(), Text::ThemeSystem.of(lang).into()),
+        ("light".into(), Text::ThemeLight.of(lang).into()),
+        ("dark".into(), Text::ThemeDark.of(lang).into()),
+    ]
+}
+
 /// The theme and the language.
 fn appearance(cx: &App) -> SettingPage {
     let lang = state::lang(cx);
@@ -156,14 +168,8 @@ fn appearance(cx: &App) -> SettingPage {
         SettingGroup::new().title(text(Text::Theme)).items(vec![
             SettingItem::new(
                 text(Text::Theme),
-                // An option is (value, label): the field shows the label and hands the
-                // value back to the writer, which is why every value here is the raw setting.
                 SettingField::dropdown(
-                    vec![
-                        ("system".into(), text(Text::ThemeSystem).into()),
-                        ("light".into(), text(Text::ThemeLight).into()),
-                        ("dark".into(), text(Text::ThemeDark).into()),
-                    ],
+                    theme_options(lang),
                     move |_| SharedString::from(theme),
                     |value: SharedString, cx| choose_theme(&value, cx),
                 ),
