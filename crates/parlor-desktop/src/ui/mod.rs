@@ -10,6 +10,9 @@
 pub mod home;
 pub mod pages;
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Receiver as Channel;
