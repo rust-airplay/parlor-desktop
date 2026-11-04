@@ -81,6 +81,19 @@ pub fn update_identity(cx: &mut App, edit: impl FnOnce(&mut Identity)) {
 pub fn reprobe(cx: &mut App) {
     cx.update_global::<Parlor, _>(|parlor, cx| {
         parlor.backends = detect::probe(&parlor.settings);
+        log::info!(
+            "reprobed: GStreamer {}, FFmpeg {}",
+            describe(&parlor.backends.gstreamer),
+            describe(&parlor.backends.ffmpeg)
+        );
         cx.refresh_windows();
     });
+}
+
+/// One availability as a log line.
+fn describe(availability: &detect::Availability) -> String {
+    match availability {
+        detect::Availability::Ready { version, .. } => format!("ready ({version})"),
+        detect::Availability::Missing { part, reason } => format!("missing ({part:?}): {reason}"),
+    }
 }

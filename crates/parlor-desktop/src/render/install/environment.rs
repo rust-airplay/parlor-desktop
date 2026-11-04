@@ -153,8 +153,7 @@ mod platform {
         Ok(())
     }
 
-    /// Reads one value, which the test below uses to check the write.
-    #[cfg(test)]
+    /// Reads one value from the user's environment.
     pub fn read(name: &str) -> Result<String, String> {
         use windows_sys::Win32::System::Registry::{KEY_QUERY_VALUE, RegQueryValueExW};
 
@@ -231,6 +230,22 @@ mod platform {
 #[cfg(target_os = "windows")]
 use platform::{clear, persist};
 
+/// The directory the user's environment names, read from the registry.
+///
+/// A program started from a shell that predates an installation inherits that shell's copy
+/// of the environment, so the process copy can be stale while the installation is perfectly
+/// usable. Detection falls back to the registry for exactly that case.
+#[cfg(target_os = "windows")]
+pub fn recorded(variable: &str) -> Option<std::path::PathBuf> {
+    platform::read(variable).ok().filter(|value| !value.is_empty()).map(std::path::PathBuf::from)
+}
+
+/// Mirrors [recorded] where there is no registry to read.
+#[cfg(not(target_os = "windows"))]
+pub fn recorded(_variable: &str) -> Option<std::path::PathBuf> {
+    None
+}
+
 #[cfg(not(target_os = "windows"))]
 fn persist(_name: &str, _value: &str) -> Result<(), String> {
     Err("only Windows writes a user environment".to_owned())
@@ -251,6 +266,30 @@ mod integration_tests {
     use super::{FFMPEG_VARIABLE, GSTREAMER_VARIABLE, Target, forget, remember};
     use crate::render::detect;
     use crate::settings::{BackendKind, Settings};
+
+    #[test]
+    #[ignore = "writes the real user environment for the length of the test"]
+    fn an_installation_is_found_when_only_the_registry_names_it() {
+        if std::env::var(GSTREAMER_VARIABLE).is_ok()
+            || super::recorded(GSTREAMER_VARIABLE).is_some()
+        {
+            return;
+        }
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let root = directory.path().join("backends").join("gstreamer");
+        std::fs::create_dir_all(root.join("bin")).expect("a bin directory");
+        std::fs::write(root.join("bin").join("gst-launch-1.0.exe"), b"").expect("a program");
+        super::platform::persist(GSTREAMER_VARIABLE, &root.to_string_lossy())
+            .expect("a value in the registry");
+        // The process copy is deliberately left alone: a shell older than the installation
+        // is what the fallback exists for.
+        let mut settings = Settings::new();
+        settings.backend.kind = BackendKind::GStreamer;
+        let found = detect::gst_launch(&settings).expect("a launcher");
+        assert!(found.starts_with(root.join("bin")), "{}", found.display());
+        super::platform::clear(GSTREAMER_VARIABLE).expect("a forgotten value");
+        assert!(super::recorded(GSTREAMER_VARIABLE).is_none(), "the registry no longer names it");
+    }
 
     #[test]
     #[ignore = "writes the real user environment for the length of the test"]

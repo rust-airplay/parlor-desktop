@@ -98,6 +98,8 @@ pub struct RootView {
     applied: Option<Settings>,
     /// Whether the receiver was asked to stop in order to start again.
     restart_pending: bool,
+    /// Whether the first-run dialog is open.
+    asked_for_backend: bool,
 }
 
 impl RootView {
@@ -118,6 +120,7 @@ impl RootView {
             appearance: None,
             applied: None,
             restart_pending: false,
+            asked_for_backend: false,
         };
         if follows_system {
             Theme::sync_system_appearance(Some(window), cx);
@@ -181,6 +184,18 @@ impl RootView {
             self.installation = None;
             state::reprobe(cx);
             changed = true;
+            // A backend that just arrived answers the first-run dialog's question, so the
+            // dialog should not stay in front of the window telling the person to install it.
+            if self.asked_for_backend && state::parlor(cx).backends.any_ready() {
+                self.asked_for_backend = false;
+                for handle in cx.windows() {
+                    let _ = cx.update_window(handle, |_, window, cx| {
+                        if window.has_active_dialog(cx) {
+                            window.close_dialog(cx);
+                        }
+                    });
+                }
+            }
         }
         let mut requested = Vec::new();
         while let Ok(target) = self.requests.try_recv() {
@@ -339,7 +354,8 @@ impl RootView {
     }
 
     /// The first-run dialog, when this machine has nothing to play through.
-    fn ask_for_backend(&self, window: &mut Window, cx: &mut Context<Self>) {
+    fn ask_for_backend(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.asked_for_backend = true;
         let lang = state::lang(cx);
         let text = move |text: Text| text.of(lang);
         window.open_dialog(cx, move |dialog, _, _| {

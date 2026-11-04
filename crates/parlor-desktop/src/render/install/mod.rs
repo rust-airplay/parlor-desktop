@@ -11,6 +11,8 @@
 
 mod download;
 mod environment;
+
+pub(crate) use environment::recorded;
 mod extract;
 mod ffmpeg;
 mod gstreamer;

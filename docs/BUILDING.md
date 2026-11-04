@@ -104,7 +104,9 @@ not reachable. The application adds the directory of the `gst-launch-1.0` it res
 DLL search path before it opens the plugin, so a runtime named in Settings or by
 `PARLOR_GSTREAMER_DIR` needs no `PATH` entry. Install it from Settings → Playback, copy a
 runtime into `lib` beside the executable, or set `PARLOR_GSTREAMER_DIR` to the runtime
-directory. A MinGW runtime from MSYS2 cannot be used: its libraries are named
+directory. A program launched from a shell that predates the installation inherits that
+shell's old environment; detection falls back to the registry copy the installer wrote, so the
+runtime is found either way. A MinGW runtime from MSYS2 cannot be used: its libraries are named
 `libgstreamer-1.0-0.dll` while the plugin imports `gstreamer-1.0-0.dll`, and detection now
 reports that as a missing runtime so the installer can supply the MSVC one.
 

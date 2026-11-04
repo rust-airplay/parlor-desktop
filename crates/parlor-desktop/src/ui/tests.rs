@@ -191,3 +191,54 @@ fn the_settings_page_renders() {
     .expect("a frame");
     cx.update(|cx| assert_eq!(view.read(cx).tab, super::Tab::Settings));
 }
+#[test]
+#[allow(unsafe_code)] // The environment is how an installation reports where it went.
+fn a_finished_installation_is_probed_again() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    use crate::render::detect::Availability;
+    use crate::render::install::{Progress, Target};
+
+    let mut context = TestAppContext::single();
+    let cx = &mut context;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let paths = crate::settings::store::Paths::at(directory.path());
+    let root = paths.backend("gstreamer");
+    if crate::render::detect::plugin_path().map(|path| path.is_file()) != Some(true) {
+        return;
+    }
+    std::fs::create_dir_all(root.join("bin")).expect("a bin directory");
+    std::fs::write(root.join("bin").join("gst-launch-1.0.exe"), b"").expect("a launcher");
+    std::fs::write(root.join("bin").join("gstreamer-1.0-0.dll"), b"").expect("a library");
+    // SAFETY: the test starts no session; this is the variable an installation writes.
+    unsafe { std::env::set_var("PARLOR_GSTREAMER_DIR", &root) };
+    let (handle, view) = open_home(cx, &paths);
+    let (sender, events) = std::sync::mpsc::channel();
+    sender
+        .send(Progress::Done {
+            version: "test".to_owned(),
+            location: root.join("bin").join("gst-launch-1.0.exe"),
+        })
+        .expect("a done report");
+    cx.update(|cx| {
+        view.update(cx, |view, cx| {
+            view.installation = Some(super::Installation {
+                target: Target::GStreamer,
+                progress: Progress::Preparing,
+                cancel: Arc::new(AtomicBool::new(false)),
+                events,
+            });
+            view.drain(cx);
+        });
+    });
+    cx.update(|cx| {
+        assert!(
+            matches!(cx.global::<Parlor>().backends.gstreamer, Availability::Ready { .. }),
+            "the installation was probed again"
+        );
+    });
+    let _ = handle;
+    // SAFETY: no other test reads this name concurrently.
+    unsafe { std::env::remove_var("PARLOR_GSTREAMER_DIR") };
+}

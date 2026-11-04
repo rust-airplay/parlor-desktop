@@ -221,10 +221,14 @@ pub fn bundled_directories() -> Vec<PathBuf> {
 
 /// The directories a root environment variable names, as a runtime and as a plain directory.
 pub fn environment_directories(variable: &str) -> Vec<PathBuf> {
-    let Some(named) = std::env::var_os(variable) else {
+    // The process copy is what a normal run has. A run started from a shell older than the
+    // installation has the old copy, so the registry is asked when the process says nothing.
+    let named = std::env::var_os(variable)
+        .map(PathBuf::from)
+        .or_else(|| super::install::recorded(variable));
+    let Some(root) = named else {
         return Vec::new();
     };
-    let root = PathBuf::from(named);
     vec![root.join("bin"), root]
 }
 
