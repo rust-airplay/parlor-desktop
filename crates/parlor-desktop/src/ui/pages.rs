@@ -156,11 +156,13 @@ fn appearance(cx: &App) -> SettingPage {
         SettingGroup::new().title(text(Text::Theme)).items(vec![
             SettingItem::new(
                 text(Text::Theme),
+                // An option is (value, label): the field shows the label and hands the
+                // value back to the writer, which is why every value here is the raw setting.
                 SettingField::dropdown(
                     vec![
-                        (text(Text::ThemeSystem).into(), "system".into()),
-                        (text(Text::ThemeLight).into(), "light".into()),
-                        (text(Text::ThemeDark).into(), "dark".into()),
+                        ("system".into(), text(Text::ThemeSystem).into()),
+                        ("light".into(), text(Text::ThemeLight).into()),
+                        ("dark".into(), text(Text::ThemeDark).into()),
                     ],
                     move |_| SharedString::from(theme),
                     |value: SharedString, cx| choose_theme(&value, cx),
@@ -170,9 +172,9 @@ fn appearance(cx: &App) -> SettingPage {
                 text(Text::Language),
                 SettingField::dropdown(
                     vec![
-                        (text(Text::LangSystem).into(), "system".into()),
-                        (text(Text::LangEnglish).into(), "en".into()),
-                        (text(Text::LangChinese).into(), "zh".into()),
+                        ("system".into(), text(Text::LangSystem).into()),
+                        ("en".into(), text(Text::LangEnglish).into()),
+                        ("zh".into(), text(Text::LangChinese).into()),
                     ],
                     move |_| SharedString::from(language),
                     |value: SharedString, cx| {
@@ -191,13 +193,18 @@ fn appearance(cx: &App) -> SettingPage {
     )
 }
 
-/// Applies a theme choice and remembers it.
-fn choose_theme(value: &str, cx: &mut App) {
-    let choice = match value {
+/// The theme a stored value names; anything unrecognized follows the system.
+fn theme_choice(value: &str) -> ThemeChoice {
+    match value {
         "light" => ThemeChoice::Light,
         "dark" => ThemeChoice::Dark,
         _ => ThemeChoice::System,
-    };
+    }
+}
+
+/// Applies a theme choice and remembers it.
+fn choose_theme(value: &str, cx: &mut App) {
+    let choice = theme_choice(value);
     state::update_settings(cx, |settings| settings.appearance.theme = choice);
     match choice {
         ThemeChoice::System => Theme::sync_system_appearance(None, cx),
@@ -264,9 +271,9 @@ fn network(cx: &App) -> SettingPage {
                 text(Text::MediaPorts),
                 SettingField::dropdown(
                     vec![
-                        (text(Text::PortsAutomatic).into(), "automatic".into()),
-                        (text(Text::PortsLegacy).into(), "legacy".into()),
-                        (text(Text::PortsCustom).into(), "custom".into()),
+                        ("automatic".into(), text(Text::PortsAutomatic).into()),
+                        ("legacy".into(), text(Text::PortsLegacy).into()),
+                        ("custom".into(), text(Text::PortsCustom).into()),
                     ],
                     move |_| SharedString::from(ports),
                     |value: SharedString, cx| {
@@ -321,9 +328,9 @@ fn security(cx: &App) -> SettingPage {
                     text(Text::Pairing),
                     SettingField::dropdown(
                         vec![
-                            (text(Text::PinOneTime).into(), "one-time".into()),
-                            (text(Text::PinFixed).into(), "fixed".into()),
-                            (text(Text::PinDisabled).into(), "disabled".into()),
+                            ("one-time".into(), text(Text::PinOneTime).into()),
+                            ("fixed".into(), text(Text::PinFixed).into()),
+                            ("disabled".into(), text(Text::PinDisabled).into()),
                         ],
                         move |_| SharedString::from(pin),
                         |value: SharedString, cx| {
@@ -607,8 +614,8 @@ fn audio(cx: &App) -> SettingPage {
                 text(Text::AudioCodec),
                 SettingField::dropdown(
                     vec![
-                        (text(Text::CodecAlac).into(), "alac".into()),
-                        (text(Text::CodecAacEld).into(), "aac-eld".into()),
+                        ("alac".into(), text(Text::CodecAlac).into()),
+                        ("aac-eld".into(), text(Text::CodecAacEld).into()),
                     ],
                     move |_| SharedString::from(codec),
                     |value: SharedString, cx| {
@@ -704,8 +711,8 @@ fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
             text(Text::BackendKind),
             SettingField::dropdown(
                 vec![
-                    (text(Text::GStreamer).into(), "gstreamer".into()),
-                    (text(Text::Ffmpeg).into(), "ffmpeg".into()),
+                    ("gstreamer".into(), text(Text::GStreamer).into()),
+                    ("ffmpeg".into(), text(Text::Ffmpeg).into()),
                 ],
                 move |_| {
                     SharedString::from(match kind {
@@ -932,8 +939,8 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
                 text(Text::WarmCodec),
                 SettingField::dropdown(
                     vec![
-                        (text(Text::H264Chain).into(), "h264".into()),
-                        (text(Text::H265Chain).into(), "h265".into()),
+                        ("h264".into(), text(Text::H264Chain).into()),
+                        ("h265".into(), text(Text::H265Chain).into()),
                     ],
                     move |_| SharedString::from(warm),
                     |value: SharedString, cx| {
@@ -1045,12 +1052,12 @@ fn diagnostics(cx: &App) -> SettingPage {
                 text(Text::LogLevel),
                 SettingField::dropdown(
                     vec![
-                        (text(Text::LevelOff).into(), "off".into()),
-                        (text(Text::LevelError).into(), "error".into()),
-                        (text(Text::LevelWarn).into(), "warn".into()),
-                        (text(Text::LevelInfo).into(), "info".into()),
-                        (text(Text::LevelDebug).into(), "debug".into()),
-                        (text(Text::LevelTrace).into(), "trace".into()),
+                        ("off".into(), text(Text::LevelOff).into()),
+                        ("error".into(), text(Text::LevelError).into()),
+                        ("warn".into(), text(Text::LevelWarn).into()),
+                        ("info".into(), text(Text::LevelInfo).into()),
+                        ("debug".into(), text(Text::LevelDebug).into()),
+                        ("trace".into(), text(Text::LevelTrace).into()),
                     ],
                     move |_| SharedString::from(level),
                     |value: SharedString, cx| {
@@ -1195,6 +1202,14 @@ mod tests {
     fn a_list_round_trips() {
         let values = vec!["aa:bb".to_owned(), "cc:dd".to_owned()];
         assert_eq!(split_list(&join_list(&values)), values);
+    }
+
+    #[test]
+    fn theme_values_map_to_the_three_choices() {
+        assert_eq!(super::theme_choice("system"), crate::settings::ThemeChoice::System);
+        assert_eq!(super::theme_choice("light"), crate::settings::ThemeChoice::Light);
+        assert_eq!(super::theme_choice("dark"), crate::settings::ThemeChoice::Dark);
+        assert_eq!(super::theme_choice("nonsense"), crate::settings::ThemeChoice::System);
     }
 
     #[test]
