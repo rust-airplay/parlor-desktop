@@ -115,6 +115,13 @@ GPUI assertion compiled in only when debug assertions are on. It fires while a v
 takes and returns focus, and release builds log a warning and carry on. Use a release build
 (`scripts\build.ps1 -Release`) for anything that opens a session.
 
+**The picture is late, or shows damaged frames** — software decoding can fall behind a desktop
+mirror, and a pipe that cannot keep up grows its latency and starts losing frames. When the
+GStreamer runtime has `d3d11h264dec` or `d3d11h265dec`, the application fills an empty decoder
+field with it and says so in the log; type `avdec_h264` or `avdec_h265` in the decoder field to
+go back to software. AirPlay mirroring rarely needs more than 1920x1080 at 60 frames, and a
+larger or faster display target only makes the sender encode more than the link can carry.
+
 **GStreamer plugins fail to load ("找不到指定的模块")** — GStreamer opens its plugins with the
 altered search path, which reads `PATH` and not the directories the application registers for
 the process. The application puts the runtime's `bin` on `PATH` before it builds a GStreamer

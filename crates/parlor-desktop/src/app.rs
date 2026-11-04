@@ -44,6 +44,12 @@ pub fn run() {
     let backends = crate::render::detect::probe(&settings);
     log::info!("GStreamer {}", describe(&backends.gstreamer));
     log::info!("FFmpeg    {}", describe(&backends.ffmpeg));
+    let mut settings = settings;
+    if prefer_hardware_decoding(&mut settings, &backends)
+        && let Err(error) = store::save(&paths, &settings)
+    {
+        log::error!("cannot save the hardware decoder choice: {error}");
+    }
     let problems = settings.problems();
     let theme = settings.appearance.theme;
     let (install_sender, install_receiver) = async_channel::unbounded::<Target>();
@@ -72,6 +78,40 @@ pub fn run() {
         })
         .expect("the window");
     });
+}
+
+/// Fills an empty decoder choice with the runtime's hardware decoder, when it has one.
+///
+/// The software decoders work everywhere, but a mirror at a desktop resolution can outrun
+/// them, and a pipe that cannot keep up grows its latency and starts losing frames. An
+/// explicit choice is left alone: a person who typed `avdec_h264` asked for software.
+/// Empty means automatic, and automatic prefers the GPU.
+fn prefer_hardware_decoding(
+    settings: &mut crate::settings::Settings,
+    backends: &crate::render::detect::Backends,
+) -> bool {
+    use crate::render::detect::Availability;
+    let Availability::Ready { location, .. } = &backends.gstreamer else {
+        return false;
+    };
+    let mut chosen = Vec::new();
+    if settings.backend.gstreamer.h264_decoder.trim().is_empty()
+        && crate::render::detect::has_element(location, "d3d11h264dec")
+    {
+        settings.backend.gstreamer.h264_decoder = "d3d11h264dec".to_owned();
+        chosen.push("d3d11h264dec");
+    }
+    if settings.backend.gstreamer.h265_decoder.trim().is_empty()
+        && crate::render::detect::has_element(location, "d3d11h265dec")
+    {
+        settings.backend.gstreamer.h265_decoder = "d3d11h265dec".to_owned();
+        chosen.push("d3d11h265dec");
+    }
+    if chosen.is_empty() {
+        return false;
+    }
+    log::info!("GStreamer decoding with {}", chosen.join(" and "));
+    true
 }
 
 /// One backend's availability, for the log.

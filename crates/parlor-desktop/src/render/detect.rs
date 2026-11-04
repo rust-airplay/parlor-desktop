@@ -208,6 +208,29 @@ pub fn gst_launch(settings: &Settings) -> Option<PathBuf> {
         .or_else(|| find_program("gst-launch-1.0", &[]))
 }
 
+/// Whether the GStreamer runtime has an element installed.
+///
+/// The inspector beside the launcher is the runtime's own answer; it needs no GStreamer
+/// headers and costs one short process. An absent inspector means "not known", which is
+/// answered false so the caller keeps the software default rather than guessing.
+pub fn has_element(launch: &std::path::Path, element: &str) -> bool {
+    let name = if cfg!(windows) { "gst-inspect-1.0.exe" } else { "gst-inspect-1.0" };
+    let inspector = launch.with_file_name(name);
+    if !inspector.is_file() {
+        return false;
+    }
+    let mut command = std::process::Command::new(inspector);
+    command.arg(element).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        // The inspector is a console program; starting it from the window must not flash a
+        // console of its own.
+        use std::os::windows::process::CommandExt as _;
+        command.creation_flags(0x0800_0000);
+    }
+    command.status().map(|status| status.success()).unwrap_or(false)
+}
+
 /// The directories beside the application that a bundled backend can live in.
 ///
 /// These are the first place a program is looked for, so a portable distribution is decided
