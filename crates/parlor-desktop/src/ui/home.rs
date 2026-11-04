@@ -102,6 +102,22 @@ pub fn render(
     }
     column = column.child(session);
 
+    // A change that a running receiver cannot see is said out loud, with the one button
+    // that applies it.
+    if view.has_pending(cx) {
+        column = column.child(
+            card()
+                .child(section_title(text(Text::PendingTitle)))
+                .child(div().text_sm().text_color(muted).child(text(Text::PendingBody)))
+                .child(
+                    Button::new("restart-session")
+                        .primary()
+                        .label(text(Text::Restart))
+                        .on_click(cx.listener(|this, _, _, cx| this.restart(cx))),
+                ),
+        );
+    }
+
     // The PIN, while a device is being asked for it.
     if let Some(pin) = &pin {
         column = column.child(

@@ -26,6 +26,7 @@ use crate::i18n::Text;
 use crate::render::install::{Installer, Progress, Target};
 use crate::session::Session;
 use crate::session::event::Event;
+use crate::settings::Settings;
 use crate::settings::identity;
 use crate::state;
 
@@ -90,6 +91,10 @@ pub struct RootView {
     installation: Option<Installation>,
     /// The observer that follows the operating system's appearance.
     appearance: Option<Subscription>,
+    /// The document the running receiver was started from, for the pending-restart notice.
+    applied: Option<Settings>,
+    /// Whether the receiver was asked to stop in order to start again.
+    restart_pending: bool,
 }
 
 impl RootView {
@@ -108,6 +113,8 @@ impl RootView {
             requests,
             installation: None,
             appearance: None,
+            applied: None,
+            restart_pending: false,
         };
         if follows_system {
             Theme::sync_system_appearance(Some(window), cx);
@@ -190,6 +197,10 @@ impl RootView {
                 self.status = Status::Stopped;
                 self.session = None;
                 self.pin = None;
+                if self.restart_pending {
+                    self.restart_pending = false;
+                    self.start(cx);
+                }
             }
             Event::Failed(reason) => {
                 self.status = Status::Failed(reason.clone());
@@ -203,9 +214,11 @@ impl RootView {
                 if !self.clients.contains(&hex) {
                     self.clients.push(hex.clone());
                 }
-                state::update_identity(cx, |identity| {
-                    identity.remember(key);
-                });
+                if state::parlor(cx).settings.auth.remember_clients {
+                    state::update_identity(cx, |identity| {
+                        identity.remember(key);
+                    });
+                }
                 self.remember(hex);
             }
             Event::Metadata(lines) => self.now_playing = lines,
@@ -247,10 +260,29 @@ impl RootView {
                 self.session = Some(session);
                 self.status = Status::Starting;
                 self.pin = None;
+                self.applied = Some(parlor.settings.clone());
             }
             Err(error) => self.status = Status::Failed(error),
         }
         cx.notify();
+    }
+
+    /// Whether the settings differ from the ones the running receiver was started with.
+    pub fn has_pending(&self, cx: &App) -> bool {
+        let Some(applied) = &self.applied else {
+            return false;
+        };
+        self.session.is_some() && applied.session_differs(&state::parlor(cx).settings)
+    }
+
+    /// Stops and starts the receiver, which is how a change takes effect.
+    pub fn restart(&mut self, cx: &mut Context<Self>) {
+        if self.session.is_some() {
+            self.restart_pending = true;
+            self.stop(cx);
+        } else {
+            self.start(cx);
+        }
     }
 
     /// Asks the receiver to stop.
@@ -413,7 +445,25 @@ impl RootView {
                         text(Text::SessionTitle)
                     } else {
                         text(Text::RestartHint)
-                    })),
+                    }))
+                    .when(self.has_pending(cx), |this| {
+                        this.child(
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(text(Text::PendingBody)),
+                                )
+                                .child(
+                                    Button::new("rail-restart")
+                                        .xsmall()
+                                        .label(text(Text::Restart))
+                                        .on_click(cx.listener(|this, _, _, cx| this.restart(cx))),
+                                ),
+                        )
+                    }),
             )
     }
 

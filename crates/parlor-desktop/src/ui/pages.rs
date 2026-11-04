@@ -1086,14 +1086,6 @@ fn diagnostics(cx: &App) -> SettingPage {
                     });
                 },
             ),
-            switch_item(
-                text(Text::SetupBody),
-                text(Text::SetupBodyHint),
-                |cx| cx.global::<state::Parlor>().settings.diagnostics.setup_body,
-                |value, cx| {
-                    state::update_settings(cx, |settings| settings.diagnostics.setup_body = value);
-                },
-            ),
         ]))
         .group(SettingGroup::new().title(text(Text::Log)).items(vec![
             SettingItem::render(move |_, _window, cx| {

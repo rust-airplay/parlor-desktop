@@ -72,6 +72,25 @@ impl Settings {
         Self { schema_version: Self::SCHEMA_VERSION, ..Self::default() }
     }
 
+    /// Whether these two documents differ in what a running session was built from.
+    ///
+    /// The appearance and the log level are deliberately not compared: both take effect
+    /// while the receiver runs, so changing either is not a pending restart.
+    pub fn session_differs(&self, other: &Settings) -> bool {
+        self.receiver != other.receiver
+            || self.display != other.display
+            || self.auth != other.auth
+            || self.network != other.network
+            || self.video != other.video
+            || self.audio != other.audio
+            || self.backend != other.backend
+            || self.diagnostics.trace_log != other.diagnostics.trace_log
+            || self.diagnostics.dump_video != other.diagnostics.dump_video
+            || self.diagnostics.dump_audio != other.diagnostics.dump_audio
+            || self.diagnostics.streaming_reports != other.diagnostics.streaming_reports
+            || self.diagnostics.setup_body != other.diagnostics.setup_body
+    }
+
     /// Everything wrong with this document, in the order a person meets the fields.
     ///
     /// The list is empty when the document can start a receiver. Each problem names the
