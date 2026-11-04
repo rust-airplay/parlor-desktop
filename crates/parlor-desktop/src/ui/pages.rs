@@ -489,26 +489,6 @@ fn video(cx: &App) -> SettingPage {
             .layout(Axis::Vertical)
             .description(text(Text::HevcHint)),
             SettingItem::new(
-                text(Text::Hls),
-                SettingField::switch(
-                    |cx| cx.global::<state::Parlor>().settings.video.hls,
-                    |value, cx| state::update_settings(cx, |settings| settings.video.hls = value),
-                ),
-            )
-            .layout(Axis::Vertical)
-            .description(text(Text::HlsHint)),
-            SettingItem::new(
-                text(Text::Slideshow),
-                SettingField::switch(
-                    |cx| cx.global::<state::Parlor>().settings.video.slideshow,
-                    |value, cx| {
-                        state::update_settings(cx, |settings| settings.video.slideshow = value)
-                    },
-                ),
-            )
-            .layout(Axis::Vertical)
-            .description(text(Text::SlideshowHint)),
-            SettingItem::new(
                 text(Text::Overscanned),
                 SettingField::switch(
                     |cx| cx.global::<state::Parlor>().settings.display.overscanned,
@@ -770,8 +750,10 @@ fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
             },
         )));
     }
-    groups.push(ffmpeg_group(cx));
-    groups.push(gstreamer_group(cx));
+    match kind {
+        BackendKind::Ffmpeg => groups.push(ffmpeg_group(cx)),
+        BackendKind::GStreamer => groups.push(gstreamer_group(cx)),
+    }
     SettingPage::new(text(Text::SettingsBackend)).groups(groups)
 }
 
@@ -853,14 +835,19 @@ fn availability_item(
 }
 
 /// The FFmpeg backend's own choices.
+///
+/// The coding a warm sink starts for is shown only while a warm sink is started: with
+/// nothing kept alive there is no coding to choose.
 fn ffmpeg_group(cx: &App) -> SettingGroup {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
-    let warm = match cx.global::<state::Parlor>().settings.backend.ffmpeg.warm_codec {
+    let chosen = &cx.global::<state::Parlor>().settings.backend.ffmpeg;
+    let warm_video = chosen.warm_video;
+    let warm = match chosen.warm_codec {
         VideoCodecChoice::H264 => "h264",
         VideoCodecChoice::H265 => "h265",
     };
-    SettingGroup::new().title(text(Text::Ffmpeg)).items(vec![
+    let mut items = vec![
         SettingItem::new(
             text(Text::Decoder),
             SettingField::input(
@@ -921,38 +908,33 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
         )
         .layout(Axis::Vertical)
         .description(text(Text::WarmVideoHint)),
-        SettingItem::new(
-            text(Text::WarmCodec),
-            SettingField::dropdown(
-                vec![
-                    (text(Text::H264Chain).into(), "h264".into()),
-                    (text(Text::H265Chain).into(), "h265".into()),
-                ],
-                move |_| SharedString::from(warm),
-                |value: SharedString, cx| {
-                    let choice = if value.as_ref() == "h265" {
-                        VideoCodecChoice::H265
-                    } else {
-                        VideoCodecChoice::H264
-                    };
-                    state::update_settings(cx, |settings| {
-                        settings.backend.ffmpeg.warm_codec = choice;
-                    });
-                },
-            ),
-        ),
-        SettingItem::new(
-            text(Text::Pacing),
-            SettingField::switch(
-                |cx| cx.global::<state::Parlor>().settings.backend.ffmpeg.pacing,
-                |value, cx| {
-                    state::update_settings(cx, |settings| settings.backend.ffmpeg.pacing = value);
-                },
-            ),
-        )
-        .layout(Axis::Vertical)
-        .description(text(Text::PacingHint)),
-    ])
+    ];
+    if warm_video {
+        items.push(
+            SettingItem::new(
+                text(Text::WarmCodec),
+                SettingField::dropdown(
+                    vec![
+                        (text(Text::H264Chain).into(), "h264".into()),
+                        (text(Text::H265Chain).into(), "h265".into()),
+                    ],
+                    move |_| SharedString::from(warm),
+                    |value: SharedString, cx| {
+                        let choice = if value.as_ref() == "h265" {
+                            VideoCodecChoice::H265
+                        } else {
+                            VideoCodecChoice::H264
+                        };
+                        state::update_settings(cx, |settings| {
+                            settings.backend.ffmpeg.warm_codec = choice;
+                        });
+                    },
+                ),
+            )
+            .layout(Axis::Vertical),
+        );
+    }
+    SettingGroup::new().title(text(Text::Ffmpeg)).items(items)
 }
 
 /// The GStreamer backend's own choices.
@@ -1025,19 +1007,6 @@ fn gstreamer_group(cx: &App) -> SettingGroup {
         )
         .layout(Axis::Vertical)
         .description(text(Text::WarmVideoHint)),
-        SettingItem::new(
-            text(Text::Pacing),
-            SettingField::switch(
-                |cx| cx.global::<state::Parlor>().settings.backend.gstreamer.pacing,
-                |value, cx| {
-                    state::update_settings(cx, |settings| {
-                        settings.backend.gstreamer.pacing = value
-                    });
-                },
-            ),
-        )
-        .layout(Axis::Vertical)
-        .description(text(Text::PacingHint)),
     ])
 }
 
