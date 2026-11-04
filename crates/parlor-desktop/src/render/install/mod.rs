@@ -180,3 +180,30 @@ pub fn remove(target: Target, paths: &Paths) -> Result<(), String> {
     }
     result
 }
+#[cfg(test)]
+mod tests {
+    use super::{Installer, Progress, Target, installed, remove};
+    use crate::settings::store::Paths;
+
+    #[test]
+    #[ignore = "downloads the GStreamer runtime package"]
+    fn installing_the_runtime_records_it_in_the_environment() {
+        let variable = super::environment::variable(Target::GStreamer);
+        if std::env::var(variable).is_ok() {
+            // A machine that already names a runtime has an environment this test must not
+            // overwrite.
+            return;
+        }
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths::at(directory.path());
+        let installer = Installer::new(Target::GStreamer, paths.clone());
+        let mut last = Progress::Preparing;
+        installer.install(&mut |progress| last = progress);
+        assert!(matches!(last, Progress::Done { .. }), "{last:?}");
+        assert!(installed(Target::GStreamer, &paths), "the runtime is on disk");
+        let recorded = std::env::var(variable).expect("the variable was written");
+        assert_eq!(recorded, paths.backend("gstreamer").to_string_lossy(), "the variable names it");
+        remove(Target::GStreamer, &paths).expect("a removal");
+        assert!(std::env::var(variable).is_err(), "a removal forgets the variable");
+    }
+}
