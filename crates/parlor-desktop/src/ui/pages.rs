@@ -17,6 +17,7 @@ use gpui_kit::*;
 
 use crate::i18n::{Lang, Text};
 use crate::render::detect::{Availability, MissingPart};
+use crate::render::install::{self, Progress, Target};
 use crate::settings::{
     AudioCodecChoice, BackendKind, DisplaySettings, LanguageChoice, LogLevel, PinChoice, PortsMode,
     Settings as Chosen, ThemeChoice, VideoCodecChoice,
@@ -26,16 +27,17 @@ use crate::ui::RootView;
 
 /// The whole settings surface.
 pub fn render(
-    _view: &mut RootView,
+    view: &mut RootView,
     _window: &mut Window,
     cx: &mut Context<RootView>,
 ) -> impl IntoElement {
-    let pages = build(cx);
+    let install = view.installation().map(|(target, progress)| (*target, progress.clone()));
+    let pages = build(cx, install);
     Settings::new("parlor-settings").sidebar_width(px(216.0)).pages(pages)
 }
 
 /// Builds every page.
-fn build(cx: &App) -> Vec<SettingPage> {
+fn build(cx: &App, install: Option<(Target, Progress)>) -> Vec<SettingPage> {
     vec![
         general(cx),
         appearance(cx),
@@ -43,7 +45,7 @@ fn build(cx: &App) -> Vec<SettingPage> {
         security(cx),
         video(cx),
         audio(cx),
-        backend(cx),
+        backend(cx, install),
         diagnostics(cx),
         about(cx),
     ]
@@ -693,11 +695,12 @@ fn audio(cx: &App) -> SettingPage {
 }
 
 /// Which backend plays, and how.
-fn backend(cx: &App) -> SettingPage {
+fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
     let parlor = state::parlor(cx);
     let backends = parlor.backends.clone();
+    let paths = parlor.paths.clone();
     let kind = parlor.settings.backend.kind;
     let mut groups = vec![SettingGroup::new().title(text(Text::BackendKind)).items(vec![
         SettingItem::new(
@@ -723,48 +726,36 @@ fn backend(cx: &App) -> SettingPage {
                 },
             ),
         ),
-        availability_item(text(Text::GStreamer), backends.gstreamer.clone()),
-        availability_item(text(Text::Ffmpeg), backends.ffmpeg.clone()),
-        SettingItem::render(move |_, _window, cx| {
-            let lang = state::lang(cx);
-            let text = move |label: Text| label.of(lang);
-            let folder = std::env::current_exe()
-                .ok()
-                .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
-            h_flex()
-                .gap_2()
-                .items_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(text(Text::BackendSearchHint)),
-                )
-                .when_some(folder, |this, _folder| {
-                    this.child(
-                        Button::new("open-application-folder")
-                            .xsmall()
-                            .outline()
-                            .label(text(Text::OpenApplicationFolder))
-                            .on_click(move |_, _, _| {
-                                if let Ok(path) = std::env::current_exe()
-                                    && let Some(folder) = path.parent()
-                                {
-                                    let _ =
-                                        std::process::Command::new("explorer").arg(folder).spawn();
-                                }
-                            }),
-                    )
-                })
-        }),
+        availability_item(text, lang, Target::GStreamer, backends.gstreamer.clone(), paths.clone()),
+        availability_item(text, lang, Target::Ffmpeg, backends.ffmpeg.clone(), paths.clone()),
     ])];
+    if let Some((target, progress)) = install {
+        groups.push(SettingGroup::new().title(text(Text::InstallTitle)).item(SettingItem::render(
+            move |_, _window, cx| {
+                let text = |label: Text| label.of(state::lang(cx));
+                v_flex()
+                    .gap_2()
+                    .child(div().text_sm().child(match target {
+                        Target::Ffmpeg => text(Text::Ffmpeg),
+                        Target::GStreamer => text(Text::GStreamer),
+                    }))
+                    .child(format!("{:.0}%", progress.fraction() * 100.0))
+            },
+        )));
+    }
     groups.push(ffmpeg_group(cx));
     groups.push(gstreamer_group(cx));
     SettingPage::new(text(Text::SettingsBackend)).groups(groups)
 }
 
-/// One backend's availability: what it is, and where it was found.
-fn availability_item(name: &'static str, availability: Availability) -> SettingItem {
+/// One backend's availability, with the buttons that change it.
+fn availability_item(
+    _text: impl Fn(Text) -> &'static str + Copy + 'static,
+    _lang: Lang,
+    target: Target,
+    availability: Availability,
+    paths: crate::settings::store::Paths,
+) -> SettingItem {
     SettingItem::render(move |_, _window, cx| {
         let lang = state::lang(cx);
         let text = move |label: Text| label.of(lang);
@@ -780,17 +771,49 @@ fn availability_item(name: &'static str, availability: Availability) -> SettingI
                 cx.theme().muted_foreground,
             ),
         };
-        let location = match &availability {
-            Availability::Ready { location, .. } => Some(location.display().to_string()),
-            Availability::Missing { .. } => None,
-        };
-        v_flex()
-            .gap_1()
-            .items_end()
-            .child(div().text_sm().child(name))
+        let present = install::installed(target, &paths);
+        let installable =
+            !matches!(availability, Availability::Missing { part: MissingPart::Plugin, .. });
+        let sender = cx.global::<state::Parlor>().installs.clone();
+        let remove_paths = paths.clone();
+        let install_sender = sender.clone();
+        let reinstall_sender = sender.clone();
+        h_flex()
+            .gap_2()
+            .items_center()
             .child(div().text_xs().text_color(colour).child(summary))
-            .when_some(location, |this, location| {
-                this.child(div().text_xs().text_color(cx.theme().muted_foreground).child(location))
+            .when(!present && installable, |this| {
+                this.child(
+                    Button::new(SharedString::from(format!("install-{}", target.directory())))
+                        .xsmall()
+                        .primary()
+                        .label(text(Text::InstallNow))
+                        .on_click(move |_, _, cx| {
+                            let _ = install_sender.try_send(target);
+                            cx.refresh_windows();
+                        }),
+                )
+            })
+            .when(present, |this| {
+                this.child(
+                    Button::new(SharedString::from(format!("reinstall-{}", target.directory())))
+                        .xsmall()
+                        .outline()
+                        .label(text(Text::Reinstall))
+                        .on_click(move |_, _, cx| {
+                            let _ = reinstall_sender.try_send(target);
+                            cx.refresh_windows();
+                        }),
+                )
+                .child(
+                    Button::new(SharedString::from(format!("remove-{}", target.directory())))
+                        .xsmall()
+                        .label(text(Text::Uninstall))
+                        .on_click(move |_, _, cx| {
+                            let _ = install::remove(target, &remove_paths);
+                            state::reprobe(cx);
+                        }),
+                )
             })
     })
 }

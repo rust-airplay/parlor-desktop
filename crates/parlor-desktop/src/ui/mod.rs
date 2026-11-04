@@ -10,15 +10,20 @@
 pub mod home;
 pub mod pages;
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::Receiver as Channel;
 use std::time::Duration;
 
+use async_channel::Receiver as Requests;
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::{Icon, IconName, Sizable, Theme, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::Text;
+use crate::render::install::{Installer, Progress, Target};
 use crate::session::Session;
 use crate::session::event::Event;
 use crate::settings::identity;
@@ -55,6 +60,14 @@ impl Status {
     }
 }
 
+/// One installation in flight.
+struct Installation {
+    target: Target,
+    progress: Progress,
+    cancel: Arc<AtomicBool>,
+    events: Channel<Progress>,
+}
+
 /// The window's content.
 pub struct RootView {
     /// The selected page.
@@ -71,13 +84,17 @@ pub struct RootView {
     pub now_playing: Vec<String>,
     /// Recent lines for the home page's activity list.
     pub activity: Vec<String>,
+    /// Installations the settings pages asked for.
+    requests: Requests<Target>,
+    /// The installation in flight, if any.
+    installation: Option<Installation>,
     /// The observer that follows the operating system's appearance.
     appearance: Option<Subscription>,
 }
 
 impl RootView {
     /// Builds the view for a window, and starts reading what the receiver says.
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, requests: Requests<Target>) -> Self {
         let follows_system =
             state::parlor(cx).settings.appearance.theme == crate::settings::ThemeChoice::System;
         let mut view = Self {
@@ -88,6 +105,8 @@ impl RootView {
             clients: Vec::new(),
             now_playing: Vec::new(),
             activity: Vec::new(),
+            requests,
+            installation: None,
             appearance: None,
         };
         if follows_system {
@@ -134,6 +153,27 @@ impl RootView {
         }
         for event in events {
             self.apply(event, cx);
+            changed = true;
+        }
+        let mut finished = false;
+        if let Some(installation) = &mut self.installation {
+            while let Ok(progress) = installation.events.try_recv() {
+                installation.progress = progress;
+                changed = true;
+            }
+            finished = installation.progress.is_final();
+        }
+        if finished {
+            self.installation = None;
+            state::reprobe(cx);
+            changed = true;
+        }
+        let mut requested = Vec::new();
+        while let Ok(target) = self.requests.try_recv() {
+            requested.push(target);
+        }
+        for target in requested {
+            self.install(target, cx);
             changed = true;
         }
         if changed {
@@ -222,19 +262,70 @@ impl RootView {
         cx.notify();
     }
 
+    /// Starts one installation on a thread of its own.
+    fn install(&mut self, target: Target, cx: &mut Context<Self>) {
+        if self.installation.is_some() {
+            return;
+        }
+        let paths = state::parlor(cx).paths.clone();
+        let installer = Installer::new(target, paths);
+        let cancel = installer.cancel_handle();
+        let (sender, events) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("parlor-install".to_owned())
+            .spawn(move || {
+                let mut report = |progress: Progress| {
+                    let _ = sender.send(progress);
+                };
+                installer.install(&mut report);
+            })
+            .ok();
+        self.installation =
+            Some(Installation { target, progress: Progress::Preparing, cancel, events });
+    }
+
+    /// The installation in flight, for a page that wants to show it.
+    pub fn installation(&self) -> Option<(&Target, &Progress)> {
+        self.installation
+            .as_ref()
+            .map(|installation| (&installation.target, &installation.progress))
+    }
+
+    /// Asks for an installation to be stopped.
+    pub fn cancel_installation(&mut self, cx: &mut Context<Self>) {
+        if let Some(installation) = &self.installation {
+            installation.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        cx.notify();
+    }
+
     /// The first-run dialog, when this machine has nothing to play through.
     fn ask_for_backend(&self, window: &mut Window, cx: &mut Context<Self>) {
         let lang = state::lang(cx);
         let text = move |text: Text| text.of(lang);
-        window.open_dialog(cx, move |dialog, _, cx| {
+        window.open_dialog(cx, move |dialog, _, _| {
             dialog
                 .title(text(Text::NoBackendDialogTitle))
                 .child(
                     v_flex().gap_3().child(text(Text::NoBackendDialogBody)).child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(text(Text::BackendSearchHint)),
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("install-ffmpeg")
+                                    .primary()
+                                    .label(text(Text::InstallFfmpeg))
+                                    .on_click(|_, _, cx| {
+                                        let _ = state::parlor(cx).installs.try_send(Target::Ffmpeg);
+                                    }),
+                            )
+                            .child(
+                                Button::new("install-gstreamer")
+                                    .label(text(Text::InstallGStreamer))
+                                    .on_click(|_, _, cx| {
+                                        let _ =
+                                            state::parlor(cx).installs.try_send(Target::GStreamer);
+                                    }),
+                            ),
                     ),
                 )
                 .footer(
@@ -284,7 +375,7 @@ impl RootView {
                     .py_3()
                     .gap_2()
                     .items_center()
-                    .child(div().text_lg().font_weight(FontWeight::BOLD).child("Parlor")),
+                    .child(div().text_lg().font_weight(gpui::FontWeight::BOLD).child("Parlor")),
             )
             .children(pages.into_iter().enumerate().map(|(ix, (tab, icon, label))| {
                 let selected = self.tab == tab;

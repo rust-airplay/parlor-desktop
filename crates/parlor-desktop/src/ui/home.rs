@@ -7,6 +7,7 @@
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::progress::Progress as ProgressBar;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -14,6 +15,7 @@ use gpui_kit::*;
 
 use crate::i18n::Text;
 use crate::render::detect::Availability;
+use crate::render::install::{Progress, Target};
 use crate::settings::{BackendKind, PRESETS};
 use crate::state;
 use crate::ui::{RootView, Status};
@@ -40,6 +42,7 @@ pub fn render(
     let pin = view.pin.clone();
     let activity = view.activity.clone();
     let now_playing = view.now_playing.clone();
+    let installation = view.installation().map(|(target, progress)| (*target, progress.clone()));
     let running = view.session.is_some();
 
     let mut column = v_flex().p_6().gap_4().w_full().max_w(px(900.0));
@@ -121,7 +124,39 @@ pub fn render(
                         .child(text(Text::NoBackendTitle)),
                 )
                 .child(div().text_sm().text_color(muted).child(text(Text::NoBackendBody)))
-                .child(div().text_sm().text_color(muted).child(text(Text::BackendSearchHint))),
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(install_button(
+                            "install-ffmpeg",
+                            text(Text::InstallFfmpeg),
+                            Target::Ffmpeg,
+                        ))
+                        .child(install_button(
+                            "install-gstreamer",
+                            text(Text::InstallGStreamer),
+                            Target::GStreamer,
+                        )),
+                ),
+        );
+    }
+
+    // An installation in flight.
+    if let Some((target, progress)) = installation {
+        let fraction = progress.fraction();
+        column = column.child(
+            card()
+                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(match target {
+                    Target::Ffmpeg => text(Text::Ffmpeg),
+                    Target::GStreamer => text(Text::GStreamer),
+                }))
+                .child(ProgressBar::new("install").value(fraction as f32 * 100.0))
+                .child(div().text_sm().text_color(muted).child(progress_label(&progress, text)))
+                .child(
+                    Button::new("cancel-install")
+                        .label(text(Text::InstallCancel))
+                        .on_click(cx.listener(|this, _, _, cx| this.cancel_installation(cx))),
+                ),
         );
     }
 
@@ -266,6 +301,13 @@ fn section_title(title: &'static str) -> impl IntoElement {
     div().text_sm().font_weight(FontWeight::SEMIBOLD).child(title)
 }
 
+/// The button that installs one backend.
+fn install_button(id: &'static str, label: &'static str, target: Target) -> impl IntoElement {
+    Button::new(id).label(label).on_click(move |_, _, cx| {
+        let _ = state::parlor(cx).installs.try_send(target);
+    })
+}
+
 /// The button that chooses a backend.
 fn backend_button(
     id: &'static str,
@@ -315,6 +357,31 @@ fn session_detail(status: &Status, name: &str, port: u16) -> String {
         Status::Running(bound) => format!("{name}  {bound}"),
         Status::Failed(reason) => reason.clone(),
         _ => format!("{name}  {port}"),
+    }
+}
+
+/// What the installation is doing, as a sentence.
+fn progress_label(progress: &Progress, text: impl Fn(Text) -> &'static str) -> String {
+    match progress {
+        Progress::Preparing => text(Text::InstallPreparing).to_owned(),
+        Progress::Downloading { received, total } => match total {
+            Some(total) if *total > 0 => format!(
+                "{}  {:.0}%  ({:.1} / {:.1} MB)",
+                text(Text::InstallDownloading),
+                *received as f64 / *total as f64 * 100.0,
+                *received as f64 / 1_048_576.0,
+                *total as f64 / 1_048_576.0
+            ),
+            _ => format!(
+                "{}  {:.1} MB",
+                text(Text::InstallDownloading),
+                *received as f64 / 1_048_576.0
+            ),
+        },
+        Progress::Extracting => text(Text::InstallExtracting).to_owned(),
+        Progress::Verifying => text(Text::InstallVerifying).to_owned(),
+        Progress::Done { version, .. } => format!("{}  {version}", text(Text::InstallDone)),
+        Progress::Failed(reason) => format!("{}: {reason}", text(Text::InstallFailed)),
     }
 }
 

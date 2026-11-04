@@ -10,7 +10,7 @@
 use gpui_kit::{App, BorrowAppContext as _, Global};
 
 use crate::i18n::Lang;
-use crate::render::detect::Backends;
+use crate::render::detect::{self, Backends};
 use crate::session::logging::LogHandle;
 use crate::settings::Problem;
 use crate::settings::Settings;
@@ -31,6 +31,8 @@ pub struct Parlor {
     pub problems: Vec<Problem>,
     /// The records the diagnostics page shows.
     pub log: LogHandle,
+    /// The channel the settings pages use to ask for an installation.
+    pub installs: async_channel::Sender<crate::render::install::Target>,
 }
 
 impl Global for Parlor {}
@@ -71,6 +73,14 @@ pub fn update_identity(cx: &mut App, edit: impl FnOnce(&mut Identity)) {
         if let Err(error) = parlor.identity.save_clients(&parlor.paths) {
             log::error!("cannot save the remembered clients: {error}");
         }
+        cx.refresh_windows();
+    });
+}
+
+/// Looks for the backends again, after an installation or a removal.
+pub fn reprobe(cx: &mut App) {
+    cx.update_global::<Parlor, _>(|parlor, cx| {
+        parlor.backends = detect::probe(&parlor.settings, &parlor.paths);
         cx.refresh_windows();
     });
 }

@@ -37,34 +37,72 @@ impl Lang {
     }
 }
 
-/// Whether the operating system's interface language is Chinese.
+/// The operating system's locale name, such as `zh-CN`.
 ///
-/// The Windows call is the only way to ask the operating system, and it takes a buffer
-/// whose length is passed with it; that is the whole of the contract.
+/// This is the locale, not the display language: a machine can be set to `zh-CN` and still
+/// show its own interface in English. It is the second answer, and it is also what the log
+/// reports when a person asks why the window is in the language it is in.
 #[allow(unsafe_code)]
-fn system_language_is_chinese() -> bool {
+pub fn system_locale_name() -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         let mut buffer = [0u16; 85];
-        // SAFETY: the buffer is valid for the length that is passed, and the call writes
-        // at most that many UTF-16 code units. It reads no process state of ours.
+        // SAFETY: the buffer is valid for the length passed, and the call writes at most
+        // that many UTF-16 code units and a terminator.
         let written = unsafe {
             windows_sys::Win32::Globalization::GetUserDefaultLocaleName(
                 buffer.as_mut_ptr(),
                 i32::try_from(buffer.len()).unwrap_or(85),
             )
         };
-        if written > 1 {
-            let name =
-                String::from_utf16_lossy(&buffer[..usize::try_from(written).unwrap_or(0) - 1]);
-            return name.starts_with("zh");
+        if written <= 1 {
+            return None;
         }
-        false
+        let units = &buffer[..usize::try_from(written).unwrap_or(0) - 1];
+        Some(String::from_utf16_lossy(units))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        std::env::var("LANG").is_ok_and(|lang| lang.to_lowercase().starts_with("zh"))
+        std::env::var("LANG").ok()
     }
+}
+
+/// The Windows UI language identifier, which is the language Windows itself speaks.
+#[allow(unsafe_code)]
+fn windows_ui_language() -> Option<u16> {
+    #[cfg(target_os = "windows")]
+    {
+        // SAFETY: the call takes no arguments and returns a LANGID.
+        Some(unsafe { windows_sys::Win32::Globalization::GetUserDefaultUILanguage() })
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+/// Whether the operating system's language is Chinese.
+///
+/// The UI language is asked first, because that is the language a person selected in
+/// Windows and the one the system's own labels are written in. The locale is the second
+/// answer, because a machine can run an English Windows set to a Chinese locale, and the
+/// window should follow the language its user reads.
+fn system_language_is_chinese() -> bool {
+    if windows_ui_language().is_some_and(|language| language & 0x3ff == 0x04) {
+        return true;
+    }
+    system_locale_name().is_some_and(|locale| locale.to_lowercase().starts_with("zh"))
+}
+
+/// One line about the language this program resolved, for the log.
+pub fn describe_system_language() -> String {
+    let locale = system_locale_name().unwrap_or_else(|| "unknown".to_owned());
+    let ui = windows_ui_language().map_or_else(|| "none".to_owned(), |id| format!("0x{id:04x}"));
+    let resolved = match Lang::resolve(LanguageChoice::System) {
+        Lang::English => "English",
+        Lang::Chinese => "Chinese",
+    };
+    format!("locale {locale}, UI language {ui}, system language resolves to {resolved}")
 }
 
 /// One label or sentence the interface shows.
@@ -280,11 +318,24 @@ pub enum Text {
     Homepage,
     Documentation,
 
+    // Installation.
+    InstallTitle,
+    InstallPreparing,
+    InstallDownloading,
+    InstallExtracting,
+    InstallVerifying,
+    InstallDone,
+    InstallFailed,
+    InstallCancel,
+    InstallRestart,
+
     // The first-run dialog.
     NoBackendDialogTitle,
     NoBackendDialogBody,
     ContinueWithout,
     Quit,
+    InstallFfmpeg,
+    InstallGStreamer,
 
     // Confirmation dialogs.
     ConfirmRegenerateBody,
@@ -329,8 +380,7 @@ impl Text {
             Self::Backend => "Backend",
             Self::NoBackendTitle => "No playback backend",
             Self::NoBackendBody => {
-                "Parlor plays what a device sends through GStreamer or FFmpeg. Neither was found \
-                 in lib or in the environment."
+                "Parlor plays what a device sends through GStreamer or FFmpeg. Neither was found."
             }
             Self::Install => "Install",
             Self::ManageBackends => "Manage backends",
@@ -509,12 +559,23 @@ impl Text {
             Self::LicenseBody => "GNU General Public License, version 3 or later.",
             Self::Homepage => "Project",
             Self::Documentation => "Documentation",
+            Self::InstallTitle => "Install a backend",
+            Self::InstallPreparing => "Preparing",
+            Self::InstallDownloading => "Downloading",
+            Self::InstallExtracting => "Extracting",
+            Self::InstallVerifying => "Checking",
+            Self::InstallDone => "Installed",
+            Self::InstallFailed => "The installation failed",
+            Self::InstallCancel => "Cancel",
+            Self::InstallRestart => "Start a new session to use it.",
             Self::NoBackendDialogTitle => "No playback backend found",
             Self::NoBackendDialogBody => {
-                "Parlor can receive a device now, but nothing would play. Put the GStreamer runtime, or ffmpeg.exe and ffplay.exe, in the lib folder beside Parlor, or name one with PARLOR_GSTREAMER_DIR or PARLOR_FFMPEG_DIR, then restart Parlor."
+                "Parlor can receive a device now, but nothing would play. Install a backend,                  or continue and choose one later in Settings."
             }
             Self::ContinueWithout => "Continue without playback",
             Self::Quit => "Quit",
+            Self::InstallFfmpeg => "Install FFmpeg",
+            Self::InstallGStreamer => "Install GStreamer",
             Self::ConfirmRegenerateBody => {
                 "Every device will see a new receiver and will have to pair again."
             }
@@ -549,7 +610,7 @@ impl Text {
             Self::Backend => "播放后端",
             Self::NoBackendTitle => "没有可用的播放后端",
             Self::NoBackendBody => {
-                "Parlor 通过 GStreamer 或 FFmpeg 播放设备投送的内容，但 lib 和环境变量中都没有找到。"
+                "Parlor 通过 GStreamer 或 FFmpeg 播放设备投送的内容，但两者都没有找到。"
             }
             Self::Install => "安装",
             Self::ManageBackends => "管理后端",
@@ -712,14 +773,23 @@ impl Text {
             Self::LicenseBody => "GNU 通用公共许可证第 3 版或更高版本。",
             Self::Homepage => "项目主页",
             Self::Documentation => "文档",
+            Self::InstallTitle => "安装后端",
+            Self::InstallPreparing => "准备中",
+            Self::InstallDownloading => "下载中",
+            Self::InstallExtracting => "解压中",
+            Self::InstallVerifying => "校验中",
+            Self::InstallDone => "已安装",
+            Self::InstallFailed => "安装失败",
+            Self::InstallCancel => "取消",
+            Self::InstallRestart => "开始新的会话即可使用。",
             Self::NoBackendDialogTitle => "没有找到播放后端",
             Self::NoBackendDialogBody => {
-                "Parlor 现在可以接收设备，但没有任何东西能播放。请把 GStreamer 运行时，或 ffmpeg.exe 与 \
-                 ffplay.exe，放到 Parlor 同级的 lib 目录中；也可以用 PARLOR_GSTREAMER_DIR 或 \
-                 PARLOR_FFMPEG_DIR 指定位置，然后重启 Parlor。"
+                "Parlor 现在可以接收设备，但没有任何东西能播放。请安装一个后端，或者继续并在设置中选择。"
             }
             Self::ContinueWithout => "不安装，继续",
             Self::Quit => "退出",
+            Self::InstallFfmpeg => "安装 FFmpeg",
+            Self::InstallGStreamer => "安装 GStreamer",
             Self::ConfirmRegenerateBody => "所有设备都会看到一个全新的接收器，需要重新配对。",
             Self::ConfirmForgetAllBody => "所有已记住的设备都需要重新配对。",
         }
