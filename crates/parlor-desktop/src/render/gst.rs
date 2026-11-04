@@ -38,10 +38,21 @@ pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
             None => "the plugin was not found beside the application".to_owned(),
         })
     })?;
-    for directory in detect::plugin_directories() {
-        platform::add_dll_directory(&directory);
+    // The plugin imports the GStreamer DLLs, so the runtime's own directory has to be
+    // reachable before the plugin is opened. It is not enough to find gst-launch-1.0: a
+    // runtime in a portable folder or on the PATH puts its DLLs beside that program, and
+    // LoadLibraryEx does not search the PATH once the search flags are in use.
+    let launch = detect::gst_launch(settings);
+    let mut directories = detect::plugin_directories();
+    if let Some(launch) = launch.as_ref()
+        && let Some(directory) = launch.parent()
+    {
+        directories.push(directory.to_path_buf());
     }
-    if let Some(launch) = detect::gst_launch(settings) {
+    for directory in &directories {
+        platform::add_dll_directory(directory);
+    }
+    if let Some(launch) = launch {
         set_launch_program(&launch);
     }
     let options = GStreamerOptions {
@@ -109,12 +120,17 @@ mod platform {
                 )
             };
             if module.is_null() {
-                return Err(format!(
-                    "cannot load {}: Windows error {}",
-                    path.display(),
-                    // SAFETY: the previous call is the one that failed.
-                    unsafe { GetLastError() }
-                ));
+                // SAFETY: the previous call is the one that failed.
+                let code = unsafe { GetLastError() };
+                // 126 is ERROR_MOD_NOT_FOUND: the plugin itself was found, but one of the
+                // libraries it imports was not. That is either a runtime that is not the
+                // MSVC build, or a runtime whose directory was not added.
+                let hint = if code == 126 {
+                    " (a library the plugin imports was not found; the GStreamer runtime has to be the MSVC build and lie beside the gst-launch-1.0 the settings name)"
+                } else {
+                    ""
+                };
+                return Err(format!("cannot load {}: Windows error {code}{hint}", path.display()));
             }
             Ok(Self { module })
         }
@@ -197,33 +213,4 @@ mod platform {
             AddDllDirectory(wide.as_ptr());
         }
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-mod platform {
-    use std::path::Path;
-    use std::sync::Arc;
-
-    use rust_airplay::Renderer;
-
-    /// The plugin loader this platform uses.
-    pub struct Library;
-
-    impl Library {
-        /// Opens the plugin.
-        pub fn open(path: &Path) -> Result<Self, String> {
-            Err(format!(
-                "the GStreamer plugin is loaded through the Windows loader only, not {}",
-                path.display()
-            ))
-        }
-
-        /// Creates a renderer through the plugin.
-        pub fn create(&self, _document: &[u8]) -> Result<Arc<dyn Renderer>, String> {
-            Err("the GStreamer plugin is not supported on this platform".to_owned())
-        }
-    }
-
-    /// Adds a directory to the places a load searches.
-    pub fn add_dll_directory(_directory: &Path) {}
 }

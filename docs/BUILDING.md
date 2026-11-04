@@ -39,8 +39,9 @@ powershell -ExecutionPolicy Bypass -File scripts\run.ps1
 
 `run.ps1` sets `PARLOR_GSTREAMER_DIR` to the unpacked runtime, so a development run uses the
 runtime the plugin was built against rather than whatever else is on the machine. That matters
-on a machine with a MinGW GStreamer on the `PATH`: its DLLs have the same names and a
-different build.
+on a machine with a MinGW GStreamer on the `PATH`: its libraries are named
+`libgstreamer-1.0-0.dll`, which an MSVC plugin cannot import, so the application reports that
+runtime as missing instead of listing it as ready.
 
 ## Tests
 
@@ -98,10 +99,14 @@ installed machine-wide and no administrator prompt is involved.
 `parlor_gst_backend.dll` beside the executable. Build it with
 `cargo build -p parlor-gst-backend` after running `setup-gstreamer.ps1`.
 
-**The plugin will not load** — the GStreamer runtime is absent or of another build. Install it
-from Settings → Playback, copy a runtime into `lib` beside the executable, or set
-`PARLOR_GSTREAMER_DIR` to the runtime directory. A MinGW runtime from MSYS2 is not the runtime
-an MSVC plugin links against.
+**The plugin will not load** — the GStreamer runtime is absent, is not the MSVC build, or is
+not reachable. The application adds the directory of the `gst-launch-1.0` it resolved to the
+DLL search path before it opens the plugin, so a runtime named in Settings or by
+`PARLOR_GSTREAMER_DIR` needs no `PATH` entry. Install it from Settings → Playback, copy a
+runtime into `lib` beside the executable, or set `PARLOR_GSTREAMER_DIR` to the runtime
+directory. A MinGW runtime from MSYS2 cannot be used: its libraries are named
+`libgstreamer-1.0-0.dll` while the plugin imports `gstreamer-1.0-0.dll`, and detection now
+reports that as a missing runtime so the installer can supply the MSVC one.
 
 **`pkg-config` cannot find `gstreamer-1.0`** — `PKG_CONFIG_PATH` does not point at the
 unpacked development package. `build.ps1` sets it; a manual `cargo build` needs it set by

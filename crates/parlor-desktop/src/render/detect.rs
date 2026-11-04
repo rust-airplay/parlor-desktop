@@ -101,8 +101,33 @@ pub fn gstreamer(settings: &Settings) -> Availability {
                 .to_owned(),
         };
     };
+    if let Err(reason) = runtime_fits(&launch) {
+        return Availability::Missing { part: MissingPart::Runtime, reason };
+    }
     let version = version_of(&launch).unwrap_or_else(|| "GStreamer".to_owned());
     Availability::Ready { version, location: launch }
+}
+
+/// Whether the runtime beside the launcher can load a plugin built with MSVC.
+///
+/// GStreamer on Windows exists in two builds that name their libraries differently: MSVC
+/// calls them `gstreamer-1.0-0.dll`, MinGW calls them `libgstreamer-1.0-0.dll`. The plugin
+/// imports the MSVC names, so a MinGW runtime cannot load it no matter what is on the search
+/// path. That is a reason to offer the install, not a runtime that is ready.
+fn runtime_fits(launch: &std::path::Path) -> Result<(), String> {
+    let Some(directory) = launch.parent() else {
+        return Ok(());
+    };
+    if directory.join("gstreamer-1.0-0.dll").is_file() {
+        return Ok(());
+    }
+    if directory.join("libgstreamer-1.0-0.dll").is_file() {
+        return Err(format!(
+            "the GStreamer at {} is a MinGW build; the plugin is built with MSVC and needs the MSVC runtime, which the installer provides",
+            directory.display()
+        ));
+    }
+    Ok(())
 }
 
 /// Looks for the FFmpeg programs a session needs.
@@ -365,5 +390,23 @@ mod tests {
             b"bundled",
             "the bundled copy comes first"
         );
+    }
+
+    #[test]
+    fn an_msvc_runtime_is_accepted_and_a_mingw_one_is_not() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let launch = directory.path().join("gst-launch-1.0.exe");
+        std::fs::write(&launch, b"").expect("a launcher");
+        assert!(
+            super::runtime_fits(&launch).is_ok(),
+            "no DLLs beside the launcher: not proven either way"
+        );
+
+        std::fs::write(directory.path().join("libgstreamer-1.0-0.dll"), b"").expect("a MinGW DLL");
+        let reason = super::runtime_fits(&launch).expect_err("a MinGW runtime is not usable");
+        assert!(reason.contains("MinGW"), "{reason}");
+
+        std::fs::write(directory.path().join("gstreamer-1.0-0.dll"), b"").expect("an MSVC DLL");
+        assert!(super::runtime_fits(&launch).is_ok(), "the MSVC runtime beside the launcher");
     }
 }

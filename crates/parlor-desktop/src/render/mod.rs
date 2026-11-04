@@ -88,4 +88,21 @@ mod tests {
         let renderer = build(&settings).expect("an FFmpeg renderer");
         assert!(!format!("{renderer:?}").is_empty());
     }
+
+    #[test]
+    #[ignore = "needs the GStreamer runtime from scripts/setup-gstreamer.ps1, outside the PATH"]
+    fn the_gstreamer_plugin_loads_from_the_runtime_it_was_pointed_at() {
+        let launch = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.tools/gstreamer/runtime/bin/gst-launch-1.0.exe");
+        if !launch.is_file() {
+            return;
+        }
+        let mut settings = Settings::new();
+        settings.backend.kind = crate::settings::BackendKind::GStreamer;
+        settings.backend.gstreamer.launch_path = launch.display().to_string();
+        // The runtime is deliberately not on the PATH and no PARLOR_GSTREAMER_DIR is set:
+        // only the directory of the program the settings name can resolve the plugin imports.
+        let renderer = build(&settings).expect("a GStreamer renderer from the named runtime");
+        assert!(!format!("{renderer:?}").is_empty());
+    }
 }
