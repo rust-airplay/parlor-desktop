@@ -130,7 +130,11 @@ impl RootView {
         view.appearance = Some(subscription);
         view.pump(cx);
         if !state::parlor(cx).backends.any_ready() {
-            view.ask_for_backend(window, cx);
+            // The kit's Root owns the dialog layers and is mounted after this callback
+            // returns, so opening the dialog from here would look for a window state that
+            // does not exist yet. Deferring it to the first frame is what makes the
+            // no-backend case a dialog instead of a panic.
+            cx.defer_in(window, |view, window, cx| view.ask_for_backend(window, cx));
         }
         view
     }
