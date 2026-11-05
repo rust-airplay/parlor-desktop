@@ -112,6 +112,16 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "asks GitHub for the Version file"]
+    fn the_repository_answers_with_a_version() {
+        let update = super::check();
+        assert!(
+            matches!(update, super::UpdateState::UpToDate | super::UpdateState::Available(_)),
+            "{update:?}"
+        );
+    }
+
+    #[test]
     fn only_a_later_version_counts() {
         assert!(is_newer("0.2.0", "0.1.0"));
         assert!(is_newer("v0.1.1", "0.1.0"));
