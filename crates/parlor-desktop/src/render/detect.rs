@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Finding the programs and libraries each backend needs.
 //!
-//! The search is deliberately short. A backend is either shipped with the application, in
-//! the `lib` directory beside the executable, or named by the environment. Nothing is looked
+//! The search is deliberately short. A backend is either embedded in the application, left
+//! in the `lib` directory beside the executable, or named by the environment. Nothing is looked
 //! for in an installation directory of this program's own, and the PATH is the last answer
 //! rather than the first: a machine with a MinGW GStreamer on its PATH has a runtime whose
 //! DLLs have the same names as the MSVC one the plugin was built against, and picking that
@@ -16,6 +16,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::settings::Settings;
+
+/// The copy of the plugin this build carries inside the program.
+///
+/// An empty slice means the build had no compiled plugin to embed, which is what a plain
+/// cargo build of the program produces.
+const EMBEDDED_PLUGIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/parlor_gst_backend.dll"));
 
 /// The layout a bundled backend is looked for in, under `lib` beside the executable.
 ///
@@ -85,7 +91,7 @@ pub fn gstreamer(settings: &Settings) -> Availability {
     let Some(plugin) = plugin_path() else {
         return Availability::Missing {
             part: MissingPart::Plugin,
-            reason: "the GStreamer plugin is not beside the application".to_owned(),
+            reason: "this build carries no GStreamer plugin and there is none beside it".to_owned(),
         };
     };
     if !plugin.is_file() {
@@ -317,19 +323,81 @@ pub fn plugin_directories() -> Vec<PathBuf> {
     directories
 }
 
-/// The location the GStreamer plugin is expected at.
+/// The location of the GStreamer plugin library.
 ///
-/// The plugin is part of the application, so it is looked for beside the executable and then
-/// in `lib`. A build that could not produce it is reported by the caller.
+/// A path named by the environment wins, then a library a development build leaves beside
+/// the program. A release carries its own copy: it is written under the data directory once
+/// and loaded from there, which is what makes the installation one file.
 pub fn plugin_path() -> Option<PathBuf> {
-    let executable = std::env::current_exe().ok()?;
-    let directory = executable.parent()?;
     let name = parlor_backend_api::plugin_file_name();
-    let beside = directory.join(name);
-    if beside.is_file() {
+    if let Some(explicit) = std::env::var_os("PARLOR_GST_PLUGIN").map(PathBuf::from)
+        && explicit.is_file()
+    {
+        return Some(explicit);
+    }
+    let beside =
+        executable_directory().map(|directory| directory.join(name)).filter(|path| path.is_file());
+    if cfg!(debug_assertions)
+        && let Some(beside) = beside.clone()
+    {
         return Some(beside);
     }
-    Some(directory.join("lib").join(name))
+    if !EMBEDDED_PLUGIN.is_empty() {
+        match unpack_plugin(EMBEDDED_PLUGIN) {
+            Ok(path) => return Some(path),
+            Err(error) => log::warn!("cannot unpack the GStreamer plugin: {error}"),
+        }
+    }
+    beside.or_else(|| executable_directory().map(|directory| directory.join("lib").join(name)))
+}
+
+/// Writes the embedded plugin under the data directory and returns where it went.
+///
+/// The file name carries a fingerprint of the contents, so an update writes a new file
+/// instead of replacing one a running session has loaded and locked.
+fn unpack_plugin(bytes: &[u8]) -> std::io::Result<PathBuf> {
+    unpack_plugin_into(bytes, &plugin_directory())
+}
+
+/// Unpacks into a directory the caller names, which is what a test uses.
+fn unpack_plugin_into(bytes: &[u8], directory: &Path) -> std::io::Result<PathBuf> {
+    std::fs::create_dir_all(directory)?;
+    let name = format!("parlor_gst_backend-{:016x}.dll", fingerprint(bytes));
+    let path = directory.join(&name);
+    if path.is_file() {
+        return Ok(path);
+    }
+    let temporary = directory.join(format!(".{name}.tmp"));
+    std::fs::write(&temporary, bytes)?;
+    std::fs::rename(&temporary, &path)?;
+    Ok(path)
+}
+
+/// Where an unpacked plugin is kept: the application's data directory.
+fn plugin_directory() -> PathBuf {
+    let base = std::env::var_os("PARLOR_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("LOCALAPPDATA").map(|value| PathBuf::from(value).join("Parlor"))
+        })
+        .or_else(|| {
+            std::env::var_os("XDG_DATA_HOME").map(|value| PathBuf::from(value).join("Parlor"))
+        })
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share/Parlor"))
+        })
+        .unwrap_or_else(|| std::env::temp_dir().join("Parlor"));
+    base.join("plugins")
+}
+
+/// A stable name for a piece of contents: FNV-1a, which is enough to tell two builds apart.
+fn fingerprint(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// The directory the executable is in.
@@ -469,6 +537,22 @@ mod tests {
             b"bundled",
             "the bundled copy comes first"
         );
+    }
+
+    #[test]
+    fn the_embedded_plugin_is_unpacked_once_per_contents() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let first = super::unpack_plugin_into(b"a plugin", directory.path()).expect("unpacked");
+        let second = super::unpack_plugin_into(b"a plugin", directory.path()).expect("unpacked");
+        assert_eq!(first, second, "the same contents reuse the same file");
+        assert_eq!(std::fs::read(&first).expect("the file"), b"a plugin");
+        assert!(
+            first.file_name().expect("a name").to_string_lossy().starts_with("parlor_gst_backend-"),
+            "the name is the plugin's"
+        );
+        let other =
+            super::unpack_plugin_into(b"another plugin", directory.path()).expect("unpacked");
+        assert_ne!(first, other, "different contents get a different file");
     }
 
     #[test]

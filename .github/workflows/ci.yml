@@ -100,3 +100,8 @@ jobs:
 
       - name: Build the plugin
         run: cargo build --release --locked -p parlor-gst-backend
+
+      # The release archive is one executable, so the program is built after the plugin and
+      # embeds it. This job is the one place that proves that link of the build works.
+      - name: Build the program with the plugin inside it
+        run: cargo build --release --locked -p parlor-desktop

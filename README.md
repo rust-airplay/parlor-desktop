@@ -34,6 +34,8 @@ and [`rust-airplay-ffmpeg`](https://github.com/rust-airplay/rust-airplay-ffmpeg)
   Chinese**.
 - **Update check** in About: the latest release names itself in [`Version`](Version), and
   the button opens the release page when a newer one exists.
+- **One executable to install**: the GStreamer adapter is embedded in the program and
+  unpacked under the data directory on first use.
 
 The interface uses no emoji.
 
@@ -71,7 +73,7 @@ mirror the screen or play audio from the AirPlay menu.
 
 | | GStreamer | FFmpeg |
 | --- | --- | --- |
-| Delivery | `parlor_gst_backend.dll` loads GStreamer at run time | `ffplay` / `ffmpeg` programs |
+| Delivery | Embedded in the program, unpacked on first use; loads GStreamer at run time | `ffplay` / `ffmpeg` programs |
 | Decoding | GPU (`d3d11h264dec`, `d3d11h265dec`) when available | CPU, or GPU with hardware decoding on |
 | Latency | Lowest | Higher; it is the fallback |
 | Install | One click | One click |
@@ -97,8 +99,8 @@ The latest release names its version in [`Version`](Version). **Settings > About
 updates** reads that file and, when it names a newer version, offers the release page.
 
 A new version is installed by replacing the old program, so the archive contains
-`parlor-desktop.exe`, `parlor_gst_backend.dll`, this README, the licence and the version
-file. Settings are kept in `%LOCALAPPDATA%\Parlor` and survive the replacement.
+`parlor-desktop.exe`, this README, the licence and the version file. Settings are kept in
+`%LOCALAPPDATA%\Parlor` and survive the replacement.
 
 ## Testing
 

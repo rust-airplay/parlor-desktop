@@ -35,7 +35,7 @@ pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
         let expected = detect::plugin_path().map(|path| path.display().to_string());
         Error::GStreamer(match expected {
             Some(expected) => format!("the plugin was not found at {expected}"),
-            None => "the plugin was not found beside the application".to_owned(),
+            None => "no GStreamer plugin is embedded in the program or beside it".to_owned(),
         })
     })?;
     // The plugin imports the GStreamer DLLs, so the runtime's own directory has to be

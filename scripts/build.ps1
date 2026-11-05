@@ -40,6 +40,17 @@ if (Test-Path (Join-Path $development "lib/pkgconfig")) {
 
 Push-Location $root
 try {
+    # The plugin comes first: the application embeds the library the build leaves in the
+    # target directory, so building it afterwards would embed the previous release.
+    if (-not $SkipPlugin -and $env:PKG_CONFIG_PATH) {
+        Write-Host "building the GStreamer plugin"
+        if ($Release) {
+            & cargo build -p parlor-gst-backend --release
+        } else {
+            & cargo build -p parlor-gst-backend
+        }
+        if ($LASTEXITCODE -ne 0) { throw "the plugin did not build" }
+    }
     Write-Host "building the application"
     if ($Release) {
         & cargo build -p parlor-desktop --release
@@ -47,15 +58,6 @@ try {
         & cargo build -p parlor-desktop
     }
     if ($LASTEXITCODE -ne 0) { throw "the application did not build" }
-    if ($SkipPlugin) { return }
-    if (-not $env:PKG_CONFIG_PATH) { return }
-    Write-Host "building the GStreamer plugin"
-    if ($Release) {
-        & cargo build -p parlor-gst-backend --release
-    } else {
-        & cargo build -p parlor-gst-backend
-    }
-    if ($LASTEXITCODE -ne 0) { throw "the plugin did not build" }
 } finally {
     Pop-Location
 }

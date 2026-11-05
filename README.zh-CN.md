@@ -26,6 +26,7 @@ Parlor 是一个带桌面界面的 Windows AirPlay 接收器。设备可以在 A
 - **主页只放观看时会用到的控件**：开始/停止、会话名称、镜像尺寸、帧率与后端。
 - **浅色与深色主题**（默认跟随系统），**英文与简体中文**界面。
 - **关于页的检测更新**：最新版本号记录在 [`Version`](Version)，有新版本时按钮打开 Release 页面。
+- **发布只有一个可执行文件**：GStreamer 适配层内嵌在程序里，首次使用时释放到数据目录。
 
 界面中不使用 emoji。
 
@@ -59,7 +60,7 @@ scripts\build.ps1 -Release
 
 | | GStreamer | FFmpeg |
 | --- | --- | --- |
-| 交付方式 | `parlor_gst_backend.dll` 运行时加载 GStreamer | `ffplay` / `ffmpeg` 程序 |
+| 交付方式 | 内嵌在程序中，首次使用时释放；运行时加载 GStreamer | `ffplay` / `ffmpeg` 程序 |
 | 解码 | 可用时使用 GPU（`d3d11h264dec`、`d3d11h265dec`） | CPU，开启硬件解码后使用 GPU |
 | 延迟 | 最低 | 较高，属于后备方案 |
 | 安装 | 一键安装 | 一键安装 |
@@ -80,8 +81,8 @@ FFmpeg 的视频窗口默认是 1280x720，因为 `ffplay` 会按视频尺寸开
 最新版本的版本号记录在 [`Version`](Version)。**设置 > 关于 > 检测更新** 会读取该文件，
 发现更新的版本时提供 Release 下载页。
 
-新版本通过替换旧程序安装：发布包包含 `parlor-desktop.exe`、`parlor_gst_backend.dll`、
-README、许可证与版本文件。设置保存在 `%LOCALAPPDATA%\Parlor`，替换后仍然有效。
+新版本通过替换旧程序安装：发布包包含 `parlor-desktop.exe`、README、许可证与版本文件。
+设置保存在 `%LOCALAPPDATA%\Parlor`，替换后仍然有效。
 
 ## 测试
 

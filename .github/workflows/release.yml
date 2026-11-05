@@ -71,13 +71,16 @@ jobs:
       - name: Run the tests
         run: cargo test --locked
 
-      # The plugin is not a default member: the application does not link it, but it has
-      # to be in the archive, so the whole workspace is built.
-      - name: Build the binary and the plugin
-        run: cargo build --release --locked --workspace
+      - name: Build the plugin
+        run: cargo build --release --locked -p parlor-gst-backend
 
-      # The archive is the whole installation: the program, the GStreamer plugin it loads,
-      # the licence, this README and the version file a client can read.
+      # The program embeds the plugin the previous step left in the target directory, which
+      # is what makes the archive one executable.
+      - name: Build the program
+        run: cargo build --release --locked -p parlor-desktop
+
+      # The archive is the whole installation: the program, which carries the plugin inside
+      # it, the licence, this README and the version file a client can read.
       - name: Package the release
         shell: pwsh
         run: |
@@ -85,7 +88,6 @@ jobs:
           $dir = "dist"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           Copy-Item target/release/parlor-desktop.exe $dir
-          Copy-Item target/release/parlor_gst_backend.dll $dir
           Copy-Item README.md, LICENSE, Version $dir
           Compress-Archive -Path "$dir/*" -DestinationPath "parlor-desktop-$tag-x86_64-pc-windows-msvc.zip" -Force
 

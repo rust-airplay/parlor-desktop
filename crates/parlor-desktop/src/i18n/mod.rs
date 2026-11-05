@@ -576,7 +576,7 @@ impl Text {
             Self::OpenApplicationFolder => "Open the application folder",
             Self::PluginMissing => "The GStreamer plugin is missing",
             Self::PluginMissingHint => {
-                "This build has no GStreamer plugin beside it. Install the GStreamer runtime                  and rebuild with the plugin."
+                "This build carries no GStreamer plugin and has none beside it."
             }
             Self::LogLevel => "Log level",
             Self::LevelOff => "Off",
@@ -817,9 +817,7 @@ impl Text {
             }
             Self::OpenApplicationFolder => "打开程序所在目录",
             Self::PluginMissing => "缺少 GStreamer 插件",
-            Self::PluginMissingHint => {
-                "此版本旁边没有 GStreamer 插件。请安装 GStreamer 运行时并重新构建插件。"
-            }
+            Self::PluginMissingHint => "此版本没有内置 GStreamer 插件，旁边也没有插件文件。",
             Self::LogLevel => "日志级别",
             Self::LevelOff => "关闭",
             Self::LevelError => "错误",
