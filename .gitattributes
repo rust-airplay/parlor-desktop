@@ -1,0 +1,6 @@
+# The repository is checked out with the same line endings on every platform: source files
+# are LF, and the formats that need their bytes kept as written are marked binary.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.zip binary
