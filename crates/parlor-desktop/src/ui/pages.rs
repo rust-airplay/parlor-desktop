@@ -945,7 +945,11 @@ fn ffmpeg_items(cx: &App) -> Vec<SettingItem> {
             text(Text::VideoSink),
             SettingField::dropdown(
                 value_options(
-                    &["ffplay -framedrop".to_owned(), "ffplay -framedrop -fs".to_owned()],
+                    &[
+                        "ffplay -framedrop -x 1280 -y 720".to_owned(),
+                        "ffplay -framedrop -x 1600 -y 900".to_owned(),
+                        "ffplay -framedrop -fs".to_owned(),
+                    ],
                     &cx.global::<state::Parlor>().settings.backend.ffmpeg.video_sink,
                     text(Text::AutoChoice).into(),
                 ),

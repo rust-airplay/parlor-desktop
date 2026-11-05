@@ -176,7 +176,14 @@ pub fn ffmpeg_programs(settings: &Settings) -> Option<FfmpegPrograms> {
     beside.extend(environment_directories("PARLOR_FFMPEG_DIR"));
     let player = find_program("ffplay", &beside)?;
     let audio_sink = sink_command(&settings.backend.ffmpeg.audio_sink, &player, &["-nodisp"]);
-    let video_sink = sink_command(&settings.backend.ffmpeg.video_sink, &player, &["-framedrop"]);
+    // ffplay sizes its window to the video and caps it at the screen, so a mirror scaled to
+    // a 4K or 1080p stream fills a smaller display and reads as fullscreen. The default
+    // window is asked for explicitly; a person who wants another size names it in settings.
+    let video_sink = sink_command(
+        &settings.backend.ffmpeg.video_sink,
+        &player,
+        &["-framedrop", "-x", "1280", "-y", "720"],
+    );
     Some(FfmpegPrograms { decoder, player, audio_sink, video_sink })
 }
 
