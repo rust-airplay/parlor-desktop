@@ -129,7 +129,9 @@ pub enum Text {
     HomeTitle,
     HomeSubtitle,
     Start,
+    StartCasting,
     Stop,
+    CheckUpdates,
     ReceiverName,
     ControlPort,
     Resolution,
@@ -381,7 +383,9 @@ impl Text {
                 "Start the receiver, then choose Parlor in the AirPlay menu of your device."
             }
             Self::Start => "Start",
+            Self::StartCasting => "Start casting",
             Self::Stop => "Stop",
+            Self::CheckUpdates => "Check for updates",
             Self::ReceiverName => "Name",
             Self::ControlPort => "Control port",
             Self::Resolution => "Resolution",
@@ -590,7 +594,7 @@ impl Text {
                 "An AirPlay receiver for the desktop, built on the rust-airplay libraries."
             }
             Self::License => "License",
-            Self::LicenseBody => "GNU General Public License, version 3 or later.",
+            Self::LicenseBody => "GPL-3.0-or-later",
             Self::Homepage => "Project",
             Self::Documentation => "Documentation",
             Self::InstallTitle => "Install a backend",
@@ -632,7 +636,9 @@ impl Text {
             Self::HomeTitle => "屏幕镜像",
             Self::HomeSubtitle => "启动接收器，然后在设备的 AirPlay 菜单中选择 Parlor。",
             Self::Start => "开始",
+            Self::StartCasting => "开启投屏",
             Self::Stop => "停止",
+            Self::CheckUpdates => "检测更新",
             Self::ReceiverName => "名称",
             Self::ControlPort => "控制端口",
             Self::Resolution => "分辨率",
@@ -823,7 +829,7 @@ impl Text {
             Self::AboutTitle => "Parlor",
             Self::AboutBody => "基于 rust-airplay 系列库构建的桌面 AirPlay 接收器。",
             Self::License => "许可证",
-            Self::LicenseBody => "GNU 通用公共许可证第 3 版或更高版本。",
+            Self::LicenseBody => "GPL-3.0-or-later",
             Self::Homepage => "项目主页",
             Self::Documentation => "文档",
             Self::InstallTitle => "安装后端",

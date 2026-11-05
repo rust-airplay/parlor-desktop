@@ -5,9 +5,12 @@
 //! it. The receiver reads its configuration once when a session starts, so a page says
 //! that a change takes effect next time, and there is nothing else to press.
 
+use std::sync::Arc;
+
 use gpui_kit::Axis;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::progress::Progress as ProgressBar;
 use gpui_kit::component::setting::{
     NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings,
 };
@@ -40,7 +43,6 @@ pub fn render(
 fn build(cx: &App, install: Option<(Target, Progress)>) -> Vec<SettingPage> {
     vec![
         general(cx),
-        appearance(cx),
         network(cx),
         security(cx),
         video(cx),
@@ -55,24 +57,19 @@ fn build(cx: &App, install: Option<(Target, Progress)>) -> Vec<SettingPage> {
 fn general(cx: &App) -> SettingPage {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
+    let theme = match cx.global::<state::Parlor>().settings.appearance.theme {
+        ThemeChoice::System => "system",
+        ThemeChoice::Light => "light",
+        ThemeChoice::Dark => "dark",
+    };
+    let language = match cx.global::<state::Parlor>().settings.appearance.language {
+        LanguageChoice::System => "system",
+        LanguageChoice::English => "en",
+        LanguageChoice::Chinese => "zh",
+    };
     SettingPage::new(text(Text::SettingsGeneral))
         .description(text(Text::SettingsDescription))
         .group(SettingGroup::new().title(text(Text::SessionTitle)).items(vec![
-                SettingItem::new(
-                    text(Text::ReceiverName),
-                    SettingField::input(
-                        |cx| {
-                            SharedString::from(
-                                cx.global::<state::Parlor>().settings.receiver.name.clone(),
-                            )
-                        },
-                        |value: SharedString, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.receiver.name = value.to_string();
-                            });
-                        },
-                    ),
-                ),
                 SettingItem::new(
                     text(Text::DeviceId),
                     SettingField::input(
@@ -135,6 +132,35 @@ fn general(cx: &App) -> SettingPage {
                     ),
                 )
                 .layout(Axis::Vertical).description(text(Text::FeedbackTimeoutHint)),
+                SettingItem::new(
+                    text(Text::Theme),
+                    SettingField::dropdown(
+                        theme_options(lang),
+                        move |_| SharedString::from(theme),
+                        |value: SharedString, cx| choose_theme(&value, cx),
+                    ),
+                ),
+                SettingItem::new(
+                    text(Text::Language),
+                    SettingField::dropdown(
+                        vec![
+                            ("system".into(), text(Text::LangSystem).into()),
+                            ("en".into(), text(Text::LangEnglish).into()),
+                            ("zh".into(), text(Text::LangChinese).into()),
+                        ],
+                        move |_| SharedString::from(language),
+                        |value: SharedString, cx| {
+                            let choice = match value.as_ref() {
+                                "en" => LanguageChoice::English,
+                                "zh" => LanguageChoice::Chinese,
+                                _ => LanguageChoice::System,
+                            };
+                            state::update_settings(cx, |settings| {
+                                settings.appearance.language = choice;
+                            });
+                        },
+                    ),
+                ),
             ]))
 }
 
@@ -148,55 +174,6 @@ pub(super) fn theme_options(lang: crate::i18n::Lang) -> Vec<(SharedString, Share
         ("light".into(), Text::ThemeLight.of(lang).into()),
         ("dark".into(), Text::ThemeDark.of(lang).into()),
     ]
-}
-
-/// The theme and the language.
-fn appearance(cx: &App) -> SettingPage {
-    let lang = state::lang(cx);
-    let text = move |label: Text| label.of(lang);
-    let theme = match cx.global::<state::Parlor>().settings.appearance.theme {
-        ThemeChoice::System => "system",
-        ThemeChoice::Light => "light",
-        ThemeChoice::Dark => "dark",
-    };
-    let language = match cx.global::<state::Parlor>().settings.appearance.language {
-        LanguageChoice::System => "system",
-        LanguageChoice::English => "en",
-        LanguageChoice::Chinese => "zh",
-    };
-    SettingPage::new(text(Text::SettingsAppearance)).group(
-        SettingGroup::new().title(text(Text::Theme)).items(vec![
-            SettingItem::new(
-                text(Text::Theme),
-                SettingField::dropdown(
-                    theme_options(lang),
-                    move |_| SharedString::from(theme),
-                    |value: SharedString, cx| choose_theme(&value, cx),
-                ),
-            ),
-            SettingItem::new(
-                text(Text::Language),
-                SettingField::dropdown(
-                    vec![
-                        ("system".into(), text(Text::LangSystem).into()),
-                        ("en".into(), text(Text::LangEnglish).into()),
-                        ("zh".into(), text(Text::LangChinese).into()),
-                    ],
-                    move |_| SharedString::from(language),
-                    |value: SharedString, cx| {
-                        let choice = match value.as_ref() {
-                            "en" => LanguageChoice::English,
-                            "zh" => LanguageChoice::Chinese,
-                            _ => LanguageChoice::System,
-                        };
-                        state::update_settings(cx, |settings| {
-                            settings.appearance.language = choice;
-                        });
-                    },
-                ),
-            ),
-        ]),
-    )
 }
 
 /// The theme a stored value names; anything unrecognized follows the system.
@@ -324,91 +301,34 @@ fn network(cx: &App) -> SettingPage {
 fn security(cx: &App) -> SettingPage {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
-    let pin = match cx.global::<state::Parlor>().settings.auth.pin {
+    let settings = &cx.global::<state::Parlor>().settings;
+    let pin = match settings.auth.pin {
         PinChoice::OneTime => "one-time",
         PinChoice::Fixed => "fixed",
         PinChoice::Disabled => "disabled",
     };
-    let mut page = SettingPage::new(text(Text::SettingsSecurity))
-        .group(SettingGroup::new().title(text(Text::Pairing)).items(vec![
-                SettingItem::new(
-                    text(Text::Pairing),
-                    SettingField::dropdown(
-                        vec![
-                            ("one-time".into(), text(Text::PinOneTime).into()),
-                            ("fixed".into(), text(Text::PinFixed).into()),
-                            ("disabled".into(), text(Text::PinDisabled).into()),
-                        ],
-                        move |_| SharedString::from(pin),
-                        |value: SharedString, cx| {
-                            let choice = match value.as_ref() {
-                                "fixed" => PinChoice::Fixed,
-                                "disabled" => PinChoice::Disabled,
-                                _ => PinChoice::OneTime,
-                            };
-                            state::update_settings(cx, |settings| settings.auth.pin = choice);
-                        },
-                    ),
-                ),
-                SettingItem::new(
-                    text(Text::Password),
-                    SettingField::input(
-                        |cx| {
-                            SharedString::from(
-                                cx.global::<state::Parlor>().settings.auth.password.clone(),
-                            )
-                        },
-                        |value: SharedString, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.auth.password = value.to_string();
-                            });
-                        },
-                    ),
-                )
-                .layout(Axis::Vertical).description(text(Text::PasswordHint)),
-                SettingItem::new(
-                    text(Text::RememberClients),
-                    SettingField::switch(
-                        |cx| cx.global::<state::Parlor>().settings.auth.remember_clients,
-                        |value, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.auth.remember_clients = value
-                            });
-                        },
-                    ),
-                )
-                .layout(Axis::Vertical).description(text(Text::RememberClientsHint)),
-            ]))
-        .group(SettingGroup::new().title(text(Text::AllowedDevices)).items(vec![
-                SettingItem::new(
-                    text(Text::RestrictClients),
-                    SettingField::switch(
-                        |cx| cx.global::<state::Parlor>().settings.auth.restrict,
-                        |value, cx| {
-                            state::update_settings(cx, |settings| settings.auth.restrict = value);
-                        },
-                    ),
-                )
-                .layout(Axis::Vertical).description(text(Text::RestrictClientsHint)),
-                SettingItem::new(
-                    text(Text::BlockedDevices),
-                    SettingField::input(
-                        |cx| {
-                            SharedString::from(join_list(
-                                &cx.global::<state::Parlor>().settings.auth.block,
-                            ))
-                        },
-                        |value: SharedString, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.auth.block = split_list(&value);
-                            });
-                        },
-                    ),
-                ),
-            ]))
-        .group(SettingGroup::new().title(text(Text::KnownDevices)).item(known_devices(lang)));
+    let restricted = settings.auth.restrict;
+    let mut items = vec![SettingItem::new(
+        text(Text::Pairing),
+        SettingField::dropdown(
+            vec![
+                ("one-time".into(), text(Text::PinOneTime).into()),
+                ("fixed".into(), text(Text::PinFixed).into()),
+                ("disabled".into(), text(Text::PinDisabled).into()),
+            ],
+            move |_| SharedString::from(pin),
+            |value: SharedString, cx| {
+                let choice = match value.as_ref() {
+                    "fixed" => PinChoice::Fixed,
+                    "disabled" => PinChoice::Disabled,
+                    _ => PinChoice::OneTime,
+                };
+                state::update_settings(cx, |settings| settings.auth.pin = choice);
+            },
+        ),
+    )];
     if pin == "fixed" {
-        page = page.group(SettingGroup::new().title(text(Text::PinDigits)).item(SettingItem::new(
+        items.push(SettingItem::new(
             text(Text::PinDigits),
             SettingField::number_input(
                 NumberFieldOptions { min: 0.0, max: 9999.0, step: 1.0 },
@@ -419,32 +339,84 @@ fn security(cx: &App) -> SettingPage {
                     });
                 },
             ),
-        )));
+        ));
     }
-    if cx.global::<state::Parlor>().settings.auth.restrict {
-        page = page.group(
-            SettingGroup::new().title(text(Text::AllowedDevices)).item(
-                SettingItem::new(
-                    text(Text::AllowedDevices),
-                    SettingField::input(
-                        |cx| {
-                            SharedString::from(join_list(
-                                &cx.global::<state::Parlor>().settings.auth.allow,
-                            ))
-                        },
-                        |value: SharedString, cx| {
-                            state::update_settings(cx, |settings| {
-                                settings.auth.allow = split_list(&value);
-                            });
-                        },
-                    ),
-                )
-                .layout(Axis::Vertical)
-                .description(text(Text::OnePerLine)),
+    items.push(
+        SettingItem::new(
+            text(Text::Password),
+            SettingField::input(
+                |cx| {
+                    SharedString::from(cx.global::<state::Parlor>().settings.auth.password.clone())
+                },
+                |value: SharedString, cx| {
+                    state::update_settings(cx, |settings| {
+                        settings.auth.password = value.to_string();
+                    });
+                },
             ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::PasswordHint)),
+    );
+    items.push(
+        SettingItem::new(
+            text(Text::RememberClients),
+            SettingField::switch(
+                |cx| cx.global::<state::Parlor>().settings.auth.remember_clients,
+                |value, cx| {
+                    state::update_settings(cx, |settings| settings.auth.remember_clients = value);
+                },
+            ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::RememberClientsHint)),
+    );
+    items.push(
+        SettingItem::new(
+            text(Text::RestrictClients),
+            SettingField::switch(
+                |cx| cx.global::<state::Parlor>().settings.auth.restrict,
+                |value, cx| {
+                    state::update_settings(cx, |settings| settings.auth.restrict = value);
+                },
+            ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::RestrictClientsHint)),
+    );
+    items.push(SettingItem::new(
+        text(Text::BlockedDevices),
+        SettingField::input(
+            |cx| SharedString::from(join_list(&cx.global::<state::Parlor>().settings.auth.block)),
+            |value: SharedString, cx| {
+                state::update_settings(cx, |settings| settings.auth.block = split_list(&value));
+            },
+        ),
+    ));
+    if restricted {
+        items.push(
+            SettingItem::new(
+                text(Text::AllowedDevices),
+                SettingField::input(
+                    |cx| {
+                        SharedString::from(join_list(
+                            &cx.global::<state::Parlor>().settings.auth.allow,
+                        ))
+                    },
+                    |value: SharedString, cx| {
+                        state::update_settings(cx, |settings| {
+                            settings.auth.allow = split_list(&value)
+                        });
+                    },
+                ),
+            )
+            .layout(Axis::Vertical)
+            .description(text(Text::OnePerLine)),
         );
     }
-    page
+    items.push(known_devices(lang));
+    SettingPage::new(text(Text::SettingsSecurity))
+        .group(SettingGroup::new().title(text(Text::Pairing)).items(items))
 }
 
 /// The list of remembered devices, with the two destructive actions.
@@ -701,7 +673,7 @@ fn audio(cx: &App) -> SettingPage {
     )
 }
 
-/// Which backend plays, and how.
+/// Which backend plays, and every backend the machine can play through.
 fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
@@ -709,97 +681,90 @@ fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
     let backends = parlor.backends.clone();
     let paths = parlor.paths.clone();
     let kind = parlor.settings.backend.kind;
-    let mut groups = vec![SettingGroup::new().title(text(Text::BackendKind)).items(vec![
-        SettingItem::new(
-            text(Text::BackendKind),
-            SettingField::dropdown(
-                vec![
-                    ("gstreamer".into(), text(Text::GStreamer).into()),
-                    ("ffmpeg".into(), text(Text::Ffmpeg).into()),
-                ],
-                move |_| {
-                    SharedString::from(match kind {
-                        BackendKind::GStreamer => "gstreamer",
-                        BackendKind::Ffmpeg => "ffmpeg",
-                    })
-                },
-                |value: SharedString, cx| {
-                    let kind = if value.as_ref() == "ffmpeg" {
-                        BackendKind::Ffmpeg
-                    } else {
-                        BackendKind::GStreamer
-                    };
-                    state::update_settings(cx, |settings| settings.backend.kind = kind);
-                },
-            ),
-        )
-        .layout(Axis::Vertical)
-        .description(text(Text::BackendHint)),
-        availability_item(text, lang, Target::GStreamer, backends.gstreamer.clone(), paths.clone()),
-        availability_item(text, lang, Target::Ffmpeg, backends.ffmpeg.clone(), paths.clone()),
-        SettingItem::render(move |_, _window, cx| {
-            let lang = state::lang(cx);
-            let text = move |label: Text| label.of(lang);
-            let folder = std::env::current_exe()
-                .ok()
-                .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
-            v_flex()
-                .gap_1()
-                .items_start()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(text(Text::BackendSearchHint)),
-                )
-                .when_some(folder, |this, folder| {
-                    this.child(
-                        Button::new("open-application-folder")
-                            .xsmall()
-                            .outline()
-                            .label(text(Text::OpenApplicationFolder))
-                            .on_click(move |_, _, _| {
-                                let _ = std::process::Command::new("explorer").arg(&folder).spawn();
-                            }),
-                    )
+    let progress = |target: Target| {
+        install
+            .as_ref()
+            .filter(|(installing, _)| *installing == target)
+            .map(|(_, progress)| progress.clone())
+    };
+
+    let mut items = vec![SettingItem::new(
+        text(Text::BackendKind),
+        SettingField::dropdown(
+            vec![
+                ("gstreamer".into(), text(Text::GStreamer).into()),
+                ("ffmpeg".into(), text(Text::Ffmpeg).into()),
+            ],
+            move |_| {
+                SharedString::from(match kind {
+                    BackendKind::GStreamer => "gstreamer",
+                    BackendKind::Ffmpeg => "ffmpeg",
                 })
-        }),
-    ])];
-    if let Some((target, progress)) = install {
-        groups.push(SettingGroup::new().title(text(Text::InstallTitle)).item(SettingItem::render(
-            move |_, _window, cx| {
-                let text = |label: Text| label.of(state::lang(cx));
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().child(match target {
-                        Target::Ffmpeg => text(Text::Ffmpeg),
-                        Target::GStreamer => text(Text::GStreamer),
-                    }))
-                    .child(format!("{:.0}%", progress.fraction() * 100.0))
             },
-        )));
+            |value: SharedString, cx| {
+                let kind = if value.as_ref() == "ffmpeg" {
+                    BackendKind::Ffmpeg
+                } else {
+                    BackendKind::GStreamer
+                };
+                state::update_settings(cx, |settings| settings.backend.kind = kind);
+            },
+        ),
+    )];
+    items.push(availability_item(
+        target_name(Text::GStreamer, lang),
+        target_name(Text::GStreamer, lang),
+        Target::GStreamer,
+        backends.gstreamer.clone(),
+        paths.clone(),
+        progress(Target::GStreamer),
+    ));
+    items.extend(gstreamer_items(cx));
+    items.push(availability_item(
+        target_name(Text::Ffmpeg, lang),
+        target_name(Text::Ffmpeg, lang),
+        Target::Ffmpeg,
+        backends.ffmpeg.clone(),
+        paths.clone(),
+        progress(Target::Ffmpeg),
+    ));
+    items.extend(ffmpeg_items(cx));
+    let folder = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
+    if let Some(folder) = folder {
+        items.push(SettingItem::render(move |_, _, _| {
+            Button::new("open-application-folder").xsmall().outline().label("Parlor").on_click({
+                let folder = folder.clone();
+                move |_, _, _| {
+                    let _ = std::process::Command::new("explorer").arg(&folder).spawn();
+                }
+            })
+        }));
     }
-    match kind {
-        BackendKind::Ffmpeg => groups.push(ffmpeg_group(cx)),
-        BackendKind::GStreamer => groups.push(gstreamer_group(cx)),
-    }
-    SettingPage::new(text(Text::SettingsBackend)).groups(groups)
+    SettingPage::new(text(Text::SettingsBackend))
+        .group(SettingGroup::new().title(text(Text::BackendKind)).items(items))
 }
 
-/// One backend's availability, with the buttons that change it.
+fn target_name(label: Text, lang: Lang) -> &'static str {
+    label.of(lang)
+}
+
+/// One backend: what it is, whether it is here, and what it is doing.
 fn availability_item(
-    _text: impl Fn(Text) -> &'static str + Copy + 'static,
-    _lang: Lang,
+    _name: &'static str,
+    _label: &'static str,
     target: Target,
     availability: Availability,
     paths: crate::settings::store::Paths,
+    progress: Option<Progress>,
 ) -> SettingItem {
     SettingItem::render(move |_, _window, cx| {
         let lang = state::lang(cx);
         let text = move |label: Text| label.of(lang);
         let (summary, colour) = match &availability {
             Availability::Ready { version, .. } => {
-                (format!("{} {version}", text(Text::Available)), cx.theme().success)
+                (format!("{} · {version}", text(Text::Available)), cx.theme().success)
             }
             Availability::Missing { part, .. } => (
                 match part {
@@ -809,65 +774,127 @@ fn availability_item(
                 cx.theme().muted_foreground,
             ),
         };
+        let name = match target {
+            Target::Ffmpeg => text(Text::Ffmpeg),
+            Target::GStreamer => text(Text::GStreamer),
+        };
         let present = install::installed(target, &paths);
         let installable =
             !matches!(availability, Availability::Missing { part: MissingPart::Plugin, .. });
-        let location = match &availability {
-            Availability::Ready { location, .. } => Some(location.display().to_string()),
-            Availability::Missing { .. } => None,
-        };
         let sender = cx.global::<state::Parlor>().installs.clone();
         let remove_paths = paths.clone();
-        let install_sender = sender.clone();
-        let reinstall_sender = sender.clone();
-        h_flex()
-            .gap_2()
+        let installing = progress.is_some();
+        let row = h_flex()
+            .justify_between()
             .items_center()
-            .child(div().text_xs().text_color(colour).child(summary))
-            .when_some(location, |this, location| {
-                this.child(div().text_xs().text_color(cx.theme().muted_foreground).child(location))
-            })
-            .when(!present && installable, |this| {
-                this.child(
-                    Button::new(SharedString::from(format!("install-{}", target.directory())))
-                        .xsmall()
-                        .primary()
-                        .label(text(Text::InstallNow))
-                        .on_click(move |_, _, cx| {
-                            let _ = install_sender.try_send(target);
-                            cx.refresh_windows();
-                        }),
-                )
-            })
-            .when(present, |this| {
-                this.child(
-                    Button::new(SharedString::from(format!("reinstall-{}", target.directory())))
-                        .xsmall()
-                        .outline()
-                        .label(text(Text::Reinstall))
-                        .on_click(move |_, _, cx| {
-                            let _ = reinstall_sender.try_send(target);
-                            cx.refresh_windows();
-                        }),
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(name))
+                    .child(div().text_sm().text_color(colour).child(summary)),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .when(present, |this| {
+                        this.child(
+                            Button::new(SharedString::from(format!(
+                                "reinstall-{}",
+                                target.directory()
+                            )))
+                            .xsmall()
+                            .outline()
+                            .label(text(Text::Reinstall))
+                            .on_click({
+                                let sender = sender.clone();
+                                move |_, _, cx| {
+                                    let _ = sender.try_send(target);
+                                    cx.refresh_windows();
+                                }
+                            }),
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!(
+                                "remove-{}",
+                                target.directory()
+                            )))
+                            .xsmall()
+                            .label(text(Text::Uninstall))
+                            .on_click({
+                                let paths = remove_paths.clone();
+                                move |_, _, cx| {
+                                    let _ = install::remove(target, &paths);
+                                    state::reprobe(cx);
+                                }
+                            }),
+                        )
+                    })
+                    .when(!present && installable && !installing, |this| {
+                        this.child(
+                            Button::new(SharedString::from(format!(
+                                "install-{}",
+                                target.directory()
+                            )))
+                            .xsmall()
+                            .primary()
+                            .label(text(Text::InstallNow))
+                            .on_click({
+                                let sender = sender.clone();
+                                move |_, _, cx| {
+                                    let _ = sender.try_send(target);
+                                    cx.refresh_windows();
+                                }
+                            }),
+                        )
+                    }),
+            );
+        let bar = progress.clone().map(|progress| {
+            v_flex()
+                .gap_1()
+                .child(
+                    ProgressBar::new(SharedString::from(format!("install-{}", target.directory())))
+                        .value(progress.fraction() as f32 * 100.0),
                 )
                 .child(
-                    Button::new(SharedString::from(format!("remove-{}", target.directory())))
-                        .xsmall()
-                        .label(text(Text::Uninstall))
-                        .on_click(move |_, _, cx| {
-                            let _ = install::remove(target, &remove_paths);
-                            state::reprobe(cx);
-                        }),
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(install_phase(&progress, text)),
                 )
-            })
+        });
+        v_flex().gap_2().w_full().child(row).when_some(bar, |this, bar| this.child(bar))
     })
+}
+
+/// What an installation is doing, as one short line.
+fn install_phase(progress: &Progress, text: impl Fn(Text) -> &'static str) -> String {
+    match progress {
+        Progress::Preparing => text(Text::InstallPreparing).to_owned(),
+        Progress::Downloading { received, total } => match total {
+            Some(total) if *total > 0 => format!(
+                "{}  {:.0}%",
+                text(Text::InstallDownloading),
+                *received as f64 / *total as f64 * 100.0
+            ),
+            _ => format!(
+                "{}  {:.1} MB",
+                text(Text::InstallDownloading),
+                *received as f64 / 1_048_576.0
+            ),
+        },
+        Progress::Extracting => text(Text::InstallExtracting).to_owned(),
+        Progress::Verifying => text(Text::InstallVerifying).to_owned(),
+        Progress::Done { version, .. } => format!("{}  {version}", text(Text::InstallDone)),
+        Progress::Failed(reason) => format!("{}: {reason}", text(Text::InstallFailed)),
+    }
 }
 
 /// The FFmpeg backend's own choices.
 ///
 /// The coding a warm sink starts for is shown only while a warm sink is started: with
 /// nothing kept alive there is no coding to choose.
-fn ffmpeg_group(cx: &App) -> SettingGroup {
+fn ffmpeg_items(cx: &App) -> Vec<SettingItem> {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
     let chosen = &cx.global::<state::Parlor>().settings.backend.ffmpeg;
@@ -893,8 +920,7 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
                 },
             ),
         )
-        .layout(Axis::Vertical)
-        .description(text(Text::EmptyUsesBackendDefault)),
+        .layout(Axis::Vertical),
         SettingItem::new(
             text(Text::AudioSink),
             SettingField::dropdown(
@@ -946,8 +972,7 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
                 },
             ),
         )
-        .layout(Axis::Vertical)
-        .description(text(Text::WarmVideoHint)),
+        .layout(Axis::Vertical),
     ];
     if warm_video {
         items.push(
@@ -986,14 +1011,13 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
                 },
             ),
         )
-        .layout(Axis::Vertical)
-        .description(text(Text::HardwareDecodingHint)),
+        .layout(Axis::Vertical),
     );
-    SettingGroup::new().title(text(Text::Ffmpeg)).items(items)
+    items
 }
 
 /// The GStreamer backend's own choices.
-fn gstreamer_group(cx: &App) -> SettingGroup {
+fn gstreamer_items(cx: &App) -> Vec<SettingItem> {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
     let elements = cx.global::<state::Parlor>().gst_elements.clone();
@@ -1015,9 +1039,8 @@ fn gstreamer_group(cx: &App) -> SettingGroup {
             ),
         )
         .layout(Axis::Vertical)
-        .description(text(Text::EmptyUsesBackendDefault))
     };
-    SettingGroup::new().title(text(Text::GStreamer)).items(vec![
+    vec![
         SettingItem::new(
             text(Text::Location),
             SettingField::dropdown(
@@ -1034,8 +1057,7 @@ fn gstreamer_group(cx: &App) -> SettingGroup {
                 },
             ),
         )
-        .layout(Axis::Vertical)
-        .description(text(Text::EmptyUsesBackendDefault)),
+        .layout(Axis::Vertical),
         element_item(
             text(Text::AudioSink),
             |settings| settings.backend.gstreamer.audio_sink.clone(),
@@ -1083,9 +1105,8 @@ fn gstreamer_group(cx: &App) -> SettingGroup {
                 },
             ),
         )
-        .layout(Axis::Vertical)
-        .description(text(Text::WarmVideoHint)),
-    ])
+        .layout(Axis::Vertical),
+    ]
 }
 
 /// What is recorded for a diagnosis.
@@ -1100,8 +1121,8 @@ fn diagnostics(cx: &App) -> SettingPage {
         LogLevel::Debug => "debug",
         LogLevel::Trace => "trace",
     };
-    SettingPage::new(text(Text::SettingsDiagnostics))
-        .group(SettingGroup::new().title(text(Text::Log)).items(vec![
+    SettingPage::new(text(Text::SettingsDiagnostics)).group(
+        SettingGroup::new().title(text(Text::Log)).items(vec![
             SettingItem::new(
                 text(Text::LogLevel),
                 SettingField::dropdown(
@@ -1164,8 +1185,6 @@ fn diagnostics(cx: &App) -> SettingPage {
                     });
                 },
             ),
-        ]))
-        .group(SettingGroup::new().title(text(Text::Log)).items(vec![
             SettingItem::render(move |_, _window, cx| {
                 let text = |label: Text| label.of(state::lang(cx));
                 let logs = cx.global::<state::Parlor>().paths.logs().display().to_string();
@@ -1192,7 +1211,8 @@ fn diagnostics(cx: &App) -> SettingPage {
                             .map(|line| div().text_xs().font_family("Consolas").child(line)),
                     )
             }),
-        ]))
+        ]),
+    )
 }
 
 /// A switch with a description.
@@ -1213,26 +1233,60 @@ fn about(cx: &App) -> SettingPage {
     let text = move |label: Text| label.of(lang);
     SettingPage::new(text(Text::SettingsAbout)).group(
         SettingGroup::new().title(text(Text::AboutTitle)).items(vec![
-            SettingItem::new(
-                text(Text::Version),
-                SettingField::input(|_| SharedString::from(env!("CARGO_PKG_VERSION")), |_, _| {}),
-            ),
-            SettingItem::new(
-                text(Text::License),
-                SettingField::input(
-                    move |_| SharedString::from(text(Text::LicenseBody)),
-                    |_, _| {},
-                ),
-            ),
             SettingItem::render(move |_, _window, cx| {
                 let text = |label: Text| label.of(state::lang(cx));
-                h_flex().gap_2().child(
-                    Button::new("homepage").xsmall().label(text(Text::Homepage)).on_click(
-                        |_, _, cx| {
-                            cx.open_url("https://github.com/rust-airplay");
-                        },
-                    ),
-                )
+                let icon = img(Arc::new(Image::from_bytes(
+                    ImageFormat::Png,
+                    include_bytes!("../../../../assets/icon-256.png").to_vec(),
+                )))
+                .size(px(96.0));
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(icon)
+                    .child(div().text_xl().font_weight(FontWeight::BOLD).child("Parlor"))
+                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child(format!(
+                        "{} {}",
+                        text(Text::Version),
+                        env!("CARGO_PKG_VERSION")
+                    )))
+            }),
+            SettingItem::render(move |_, _window, cx| {
+                let text = |label: Text| label.of(state::lang(cx));
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .justify_center()
+                            .child(
+                                Button::new("check-updates")
+                                    .large()
+                                    .primary()
+                                    .label(text(Text::CheckUpdates))
+                                    .on_click(|_, _, _| {}),
+                            )
+                            .child(
+                                Button::new("homepage")
+                                    .large()
+                                    .outline()
+                                    .label(text(Text::Homepage))
+                                    .on_click(|_, _, cx| {
+                                        cx.open_url(
+                                            "https://github.com/rust-airplay/parlor-desktop",
+                                        );
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("GPL-3.0-or-later"),
+                    )
             }),
         ]),
     )

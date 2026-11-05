@@ -7,6 +7,7 @@
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::progress::Progress as ProgressBar;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{Sizable, h_flex, v_flex};
@@ -37,11 +38,8 @@ pub fn render(
     let settings = parlor.settings.clone();
     let backends = parlor.backends.clone();
     let problems = parlor.problems.clone();
-    let remembered = parlor.identity.clients().to_vec();
     let status = view.status.clone();
     let pin = view.pin.clone();
-    let activity = view.activity.clone();
-    let now_playing = view.now_playing.clone();
     let installation = view.installation().map(|(target, progress)| (*target, progress.clone()));
     let running = view.session.is_some();
 
@@ -51,8 +49,7 @@ pub fn render(
     column = column.child(
         v_flex()
             .gap_1()
-            .child(div().text_xl().font_weight(FontWeight::BOLD).child(text(Text::HomeTitle)))
-            .child(div().text_sm().text_color(muted).child(text(Text::HomeSubtitle))),
+            .child(div().text_xl().font_weight(FontWeight::BOLD).child(text(Text::HomeTitle))),
     );
 
     // The receiver, and the one button that matters while watching.
@@ -82,7 +79,7 @@ pub fn render(
             .child(
                 Button::new("toggle-session")
                     .primary()
-                    .label(if running { text(Text::Stop) } else { text(Text::Start) })
+                    .label(if running { text(Text::Stop) } else { text(Text::StartCasting) })
                     .on_click(cx.listener(|this, _, _, cx| {
                         if this.session.is_some() {
                             this.stop(cx);
@@ -101,6 +98,14 @@ pub fn render(
         );
     }
     column = column.child(session);
+
+    // The name a device shows in its AirPlay menu; changed here because it is what the
+    // person watching sees.
+    column = column.child(
+        card()
+            .child(section_title(text(Text::ReceiverName)))
+            .child(Input::new(&view.name_input).w_full()),
+    );
 
     // A change that a running receiver cannot see is said out loud, with the one button
     // that applies it.
@@ -246,44 +251,6 @@ pub fn render(
         ),
     );
 
-    // What has connected, and what it is playing.
-    let mut devices =
-        card().child(section_title(text(Text::Devices))).child(if remembered.is_empty() {
-            div().text_sm().text_color(muted).child(text(Text::NoDevices)).into_any_element()
-        } else {
-            v_flex()
-                .gap_1()
-                .children(
-                    remembered
-                        .iter()
-                        .map(|key| {
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child(short_key(&crate::settings::identity::hex(key)))
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .into_any_element()
-        });
-    if !now_playing.is_empty() {
-        devices = devices.child(div().text_sm().child(now_playing.join("  ")));
-    }
-    column = column.child(devices);
-
-    if !activity.is_empty() {
-        column = column.child(
-            card().child(section_title(text(Text::Activity))).child(
-                v_flex().gap_1().children(
-                    activity
-                        .iter()
-                        .map(|line| div().text_xs().text_color(muted).child(line.clone()))
-                        .collect::<Vec<_>>(),
-                ),
-            ),
-        );
-    }
-
     v_flex().id("home").size_full().overflow_y_scrollbar().child(column)
 }
 
@@ -399,9 +366,4 @@ fn progress_label(progress: &Progress, text: impl Fn(Text) -> &'static str) -> S
         Progress::Done { version, .. } => format!("{}  {version}", text(Text::InstallDone)),
         Progress::Failed(reason) => format!("{}: {reason}", text(Text::InstallFailed)),
     }
-}
-
-/// The first characters of a device key, which is enough to tell two apart.
-fn short_key(key: &str) -> String {
-    key.chars().take(12).collect()
 }

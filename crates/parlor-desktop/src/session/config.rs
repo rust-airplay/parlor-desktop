@@ -219,6 +219,7 @@ mod tests {
         // The FFmpeg backend carries raw frames through a pipe; 4K is clamped to 1080p,
         // which still has the same shape.
         settings.backend.kind = crate::settings::BackendKind::Ffmpeg;
+        settings.backend.ffmpeg.hardware = false;
         let config = receiver_config(&settings, &identity, Arc::clone(&renderer), &paths, &sender);
         assert_eq!((config.display.width, config.display.height), (1920, 1080));
 

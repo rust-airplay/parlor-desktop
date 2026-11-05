@@ -74,7 +74,9 @@ impl Default for FfmpegSettings {
             warm_video: false,
             warm_codec: VideoCodecChoice::H264,
             pacing: true,
-            hardware: false,
+            // A new installation decodes on the GPU when the build has an accelerator; the
+            // renderer falls back to software when it does not.
+            hardware: true,
         }
     }
 }

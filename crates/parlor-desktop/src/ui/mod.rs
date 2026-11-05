@@ -21,6 +21,7 @@ use std::time::Duration;
 use async_channel::Receiver as Requests;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{Icon, IconName, Sizable, Theme, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -55,13 +56,6 @@ pub enum Status {
     Stopping,
     /// Could not start, or stopped with an error.
     Failed(String),
-}
-
-impl Status {
-    /// Whether the receiver is up or on its way up.
-    fn is_active(&self) -> bool {
-        matches!(self, Self::Starting | Self::Running(_))
-    }
 }
 
 /// One installation in flight.
@@ -100,6 +94,10 @@ pub struct RootView {
     restart_pending: bool,
     /// Whether the first-run dialog is open.
     asked_for_backend: bool,
+    /// The session name, edited on the home page.
+    pub name_input: Entity<InputState>,
+    /// Keeps the name the input shows and the name the settings hold together.
+    _name_subscription: Subscription,
 }
 
 impl RootView {
@@ -107,6 +105,14 @@ impl RootView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>, requests: Requests<Target>) -> Self {
         let follows_system =
             state::parlor(cx).settings.appearance.theme == crate::settings::ThemeChoice::System;
+        let name = state::parlor(cx).settings.receiver.name.clone();
+        let name_input = cx.new(|cx| InputState::new(window, cx).default_value(name));
+        let name_subscription = cx.subscribe(&name_input, |_, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                let value = input.read(cx).value().to_string();
+                state::update_settings(cx, |settings| settings.receiver.name = value);
+            }
+        });
         let mut view = Self {
             tab: Tab::Home,
             session: None,
@@ -121,6 +127,8 @@ impl RootView {
             applied: None,
             restart_pending: false,
             asked_for_backend: false,
+            name_input,
+            _name_subscription: name_subscription,
         };
         if follows_system {
             Theme::sync_system_appearance(Some(window), cx);
@@ -464,11 +472,6 @@ impl RootView {
                             .child(div().size(px(8.0)).rounded_full().bg(dot))
                             .child(div().text_sm().child(status_label)),
                     )
-                    .child(div().text_xs().text_color(muted).child(if self.status.is_active() {
-                        text(Text::SessionTitle)
-                    } else {
-                        text(Text::RestartHint)
-                    }))
                     .when(self.has_pending(cx), |this| {
                         this.child(
                             v_flex()
