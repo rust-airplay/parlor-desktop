@@ -43,6 +43,20 @@ on a machine with a MinGW GStreamer on the `PATH`: its libraries are named
 `libgstreamer-1.0-0.dll`, which an MSVC plugin cannot import, so the application reports that
 runtime as missing instead of listing it as ready.
 
+## The icon
+
+`assets/icon.ico` is embedded in the executable by `crates/parlor-desktop/build.rs`, which is
+what puts it in Explorer, the taskbar and the window title bar. The files are generated from
+one description:
+
+```powershell
+python scripts\draw-icon.py
+```
+
+That writes `assets/icon.png` (1024), the sizes from 16 to 256, and `assets/icon.ico`. The
+drawing is done at four times the final size and downsampled, which is what keeps the small
+sizes clean.
+
 ## Tests
 
 ```powershell
