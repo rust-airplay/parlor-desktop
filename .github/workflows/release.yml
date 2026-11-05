@@ -138,6 +138,10 @@ jobs:
       - name: Record the version
         run: |
           echo "${TAG#v}" > Version
+          if git diff --quiet -- Version; then
+            echo "Version already records ${TAG#v}; nothing to commit."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Version
