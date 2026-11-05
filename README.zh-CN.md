@@ -32,7 +32,7 @@ Parlor 是一个带桌面界面的 Windows AirPlay 接收器。设备可以在 A
 ## 环境要求
 
 - Windows 10 或更高版本，64 位。
-- 构建需要 Rust 1.92 或更新版本，使用 MSVC 工具链。
+- 构建需要 Rust 1.95 或更新版本，使用 MSVC 工具链。
 - 构建不需要任何媒体库；GStreamer 与 FFmpeg 在运行时查找，两者都没有时可在应用内安装。
 
 ## 构建

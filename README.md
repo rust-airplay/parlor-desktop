@@ -40,7 +40,7 @@ The interface uses no emoji.
 ## Requirements
 
 - Windows 10 or later, 64 bit.
-- Rust 1.92 or newer with the MSVC toolchain, to build.
+- Rust 1.95 or newer with the MSVC toolchain, to build.
 - No media library is needed to build. GStreamer and FFmpeg are found at run time, and the
   application can install either one when a machine has neither.
 
