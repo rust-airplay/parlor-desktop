@@ -61,6 +61,8 @@ pub struct FfmpegSettings {
     pub warm_codec: VideoCodecChoice,
     /// Whether the backend honours a spacing asked for through the video stream.
     pub pacing: bool,
+    /// Whether the video player is asked to decode on the GPU.
+    pub hardware: bool,
 }
 
 impl Default for FfmpegSettings {
@@ -72,6 +74,7 @@ impl Default for FfmpegSettings {
             warm_video: false,
             warm_codec: VideoCodecChoice::H264,
             pacing: true,
+            hardware: false,
         }
     }
 }

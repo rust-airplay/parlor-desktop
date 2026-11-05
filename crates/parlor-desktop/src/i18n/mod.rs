@@ -244,6 +244,8 @@ pub enum Text {
     ResolutionHint,
     FrameRateHint,
     BackendHint,
+    HardwareDecoding,
+    HardwareDecodingHint,
 
     // Audio.
     AudioCodec,
@@ -498,7 +500,11 @@ impl Text {
                 "Mirror clients encode at most 60 frames a second. A higher value only adds load."
             }
             Self::BackendHint => {
-                "GStreamer decodes video on the GPU and is the one to use for a mirror. The FFmpeg backend plays through ffplay, which decodes on the CPU: a large mirror stutters, and a stream that starts mid-picture shows green until the next key frame."
+                "GStreamer decodes video on the GPU and is the one to use for a mirror. The FFmpeg backend plays through ffplay, which decodes on the CPU unless hardware decoding is switched on: a large mirror stutters, and a stream that starts mid-picture shows green until the next key frame."
+            }
+            Self::HardwareDecoding => "Hardware decoding",
+            Self::HardwareDecodingHint => {
+                "Asks the player for the GPU decoder its build lists, and falls back to software when it has none. It buys CPU rather than latency: a frame decoded on the GPU comes back to memory to be shown."
             }
             Self::AudioCodec => "Audio codec",
             Self::CodecAlac => "Apple Lossless",
@@ -733,7 +739,11 @@ impl Text {
             }
             Self::FrameRateHint => "镜像客户端通常最多 60 帧。设得更高只会增加负载。",
             Self::BackendHint => {
-                "GStreamer 用 GPU 解码视频，镜像播放应选它。FFmpeg 后端通过 ffplay 软件解码：大画幅会卡顿，若从半途开始接收，关键帧到达前会显示绿屏。"
+                "GStreamer 用 GPU 解码视频，镜像播放应选它。FFmpeg 后端通过 ffplay 解码，默认用 CPU，可在下方开启硬件解码：大画幅会卡顿，若从半途开始接收，关键帧到达前会显示绿屏。"
+            }
+            Self::HardwareDecoding => "硬件解码",
+            Self::HardwareDecodingHint => {
+                "让播放器使用它支持的 GPU 解码器；没有可用解码器时自动回到软件解码。它节省的是 CPU 而不是延迟：GPU 解出的帧仍要回到内存才能显示。"
             }
             Self::AudioCodec => "音频编码",
             Self::CodecAlac => "Apple Lossless",

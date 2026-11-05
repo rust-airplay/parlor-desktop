@@ -357,6 +357,7 @@ mod tests {
                     warm_video: true,
                     warm_codec: VideoCodecChoice::H265,
                     pacing: false,
+                    hardware: false,
                 },
                 gstreamer: GStreamerSettings {
                     launch_path: "C:/gst/bin/gst-launch-1.0.exe".to_owned(),

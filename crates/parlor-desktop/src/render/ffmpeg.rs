@@ -31,7 +31,8 @@ pub fn build(settings: &Settings) -> Result<Arc<dyn Renderer>, Error> {
         .with_decoder(programs.decoder.to_string_lossy().into_owned())
         .with_warm_video(settings.backend.ffmpeg.warm_video)
         .with_warm_codec(settings.backend.ffmpeg.warm_codec.codec())
-        .with_pacing(settings.backend.ffmpeg.pacing);
+        .with_pacing(settings.backend.ffmpeg.pacing)
+        .with_hardware_decoding(settings.backend.ffmpeg.hardware);
     let renderer =
         FfmpegRenderer::with_options(options).map_err(|error| Error::Ffmpeg(error.to_string()))?;
     Ok(Arc::new(renderer))

@@ -6526,7 +6526,7 @@ dependencies = [
 [[package]]
 name = "rust-airplay-ffmpeg"
 version = "0.1.0"
-source = "git+https://github.com/rust-airplay/rust-airplay-ffmpeg?rev=eed040bbf25433d312a3919eb4876401db604a50#eed040bbf25433d312a3919eb4876401db604a50"
+source = "git+https://github.com/rust-airplay/rust-airplay-ffmpeg?rev=7bac958de3fe620b2267a16ec7d866f05757d04f#7bac958de3fe620b2267a16ec7d866f05757d04f"
 dependencies = [
  "log",
  "rust-airplay",

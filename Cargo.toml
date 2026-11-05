@@ -31,7 +31,7 @@ rust-airplay = "0.3.2"
 rust-airplay-gstream = "0.3.1"
 # The FFmpeg backend is not published, so it is pinned to the revision this program was
 # written against.
-rust-airplay-ffmpeg = { git = "https://github.com/rust-airplay/rust-airplay-ffmpeg", rev = "eed040bbf25433d312a3919eb4876401db604a50" }
+rust-airplay-ffmpeg = { git = "https://github.com/rust-airplay/rust-airplay-ffmpeg", rev = "7bac958de3fe620b2267a16ec7d866f05757d04f" }
 
 parlor-backend-api = { path = "crates/parlor-backend-api" }
 

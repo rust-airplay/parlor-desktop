@@ -55,7 +55,10 @@ pub fn receiver_config(
     let mut display = settings.display.display();
     display.max_fps = display.max_fps.min(60);
     display.refresh_rate = display.refresh_rate.min(60.0);
+    // Software decoding is the reason for the cap; a hardware decoder can carry the size
+    // the person chose.
     if settings.backend.kind == crate::settings::BackendKind::Ffmpeg
+        && !settings.backend.ffmpeg.hardware
         && (display.width > 1920 || display.height > 1080)
     {
         let scale = (1920.0 / display.width as f64).min(1080.0 / display.height as f64);
@@ -216,8 +219,13 @@ mod tests {
         // The FFmpeg backend carries raw frames through a pipe; 4K is clamped to 1080p,
         // which still has the same shape.
         settings.backend.kind = crate::settings::BackendKind::Ffmpeg;
-        let config = receiver_config(&settings, &identity, renderer, &paths, &sender);
+        let config = receiver_config(&settings, &identity, Arc::clone(&renderer), &paths, &sender);
         assert_eq!((config.display.width, config.display.height), (1920, 1080));
+
+        // With the GPU decoder the chosen size is kept.
+        settings.backend.ffmpeg.hardware = true;
+        let config = receiver_config(&settings, &identity, renderer, &paths, &sender);
+        assert_eq!((config.display.width, config.display.height), (3840, 2160));
     }
 
     #[test]

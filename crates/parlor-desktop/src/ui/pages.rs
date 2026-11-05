@@ -974,6 +974,21 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
             .layout(Axis::Vertical),
         );
     }
+    items.push(
+        SettingItem::new(
+            text(Text::HardwareDecoding),
+            SettingField::switch(
+                |cx| cx.global::<state::Parlor>().settings.backend.ffmpeg.hardware,
+                |value, cx| {
+                    state::update_settings(cx, |settings| {
+                        settings.backend.ffmpeg.hardware = value;
+                    });
+                },
+            ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::HardwareDecodingHint)),
+    );
     SettingGroup::new().title(text(Text::Ffmpeg)).items(items)
 }
 
