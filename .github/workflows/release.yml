@@ -1,0 +1,145 @@
+name: Release
+
+# Run this from the Actions tab. `tag` is the git tag to create and `changelog` is the body
+# of the release; use \n for a line break in the input box.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.2.0; a missing v is added
+        required: true
+        type: string
+      changelog:
+        description: Release notes; use \n for line breaks, or leave empty to use the commits
+        required: false
+        type: string
+      draft:
+        description: Create the release as a draft
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-parlor-desktop
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Normalise the tag
+        shell: bash
+        run: |
+          tag="${{ inputs.tag }}"
+          echo "TAG=v${tag#[vV]}" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run the tests
+        run: cargo test --locked
+
+      - name: Build the binary and the plugin
+        run: cargo build --release --locked
+
+      # The archive is the whole installation: the program, the GStreamer plugin it loads,
+      # the licence, this README and the version file a client can read.
+      - name: Package the release
+        shell: pwsh
+        run: |
+          $tag = $env:TAG
+          $dir = "dist"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item target/release/parlor-desktop.exe $dir
+          Copy-Item target/release/parlor_gst_backend.dll $dir
+          Copy-Item README.md, LICENSE, Version $dir
+          Compress-Archive -Path "$dir/*" -DestinationPath "parlor-desktop-$tag-x86_64-pc-windows-msvc.zip" -Force
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: parlor-desktop
+          path: '*.zip'
+          if-no-files-found: error
+
+  release:
+    name: Create the GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          # `git describe` finds the previous release when the tags are here.
+          fetch-depth: 0
+
+      - name: Normalise the tag
+        run: |
+          tag="${{ inputs.tag }}"
+          echo "TAG=v${tag#[vV]}" >> "$GITHUB_ENV"
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          if [ "$TAG" != "v${version}" ]; then
+            echo "Cargo.toml has ${version}, so the tag has to be v${version}; this run uses $TAG." >&2
+            exit 1
+          fi
+
+      - name: Write the release notes
+        env:
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          if [ -n "$CHANGELOG" ]; then
+            printf '%b\n' "$CHANGELOG" > notes.md
+          else
+            previous=$(git describe --tags --abbrev=0 2>/dev/null || true)
+            if [ -n "$previous" ]; then
+              git log --pretty='- %s' "${previous}..HEAD" > notes.md
+            else
+              git log --pretty='- %s' > notes.md
+            fi
+          fi
+          printf '\n### Installing\n\nDownload the archive, replace the old program and plugin, and start it.\nThe receiver remembers its settings in %%LOCALAPPDATA%%\\Parlor.\n' >> notes.md
+
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: parlor-desktop
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          args=(--title "Parlor $TAG")
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            args+=(--draft)
+          fi
+          gh release create "$TAG" dist/*.zip \
+            --repo "${{ github.repository }}" \
+            --notes-file notes.md \
+            "${args[@]}"
+
+      # The about page reads the version from this file, so the latest release has to name
+      # itself there as soon as it exists.
+      - name: Record the version
+        run: |
+          echo "${TAG#v}" > Version
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Version
+          git commit -m "chore: record $TAG as the latest version"
+          git push origin HEAD:main

@@ -58,6 +58,16 @@ pub enum Status {
     Failed(String),
 }
 
+/// The channels behind the about page's update check.
+pub struct Updates {
+    /// Requests from the about page.
+    pub(crate) requests: Requests<()>,
+    /// Answers from the thread that asked.
+    pub(crate) results: Requests<crate::update::UpdateState>,
+    /// The thread's end of those answers.
+    pub(crate) sender: async_channel::Sender<crate::update::UpdateState>,
+}
+
 /// One installation in flight.
 struct Installation {
     target: Target,
@@ -94,6 +104,8 @@ pub struct RootView {
     restart_pending: bool,
     /// Whether the first-run dialog is open.
     asked_for_backend: bool,
+    /// The update check's channels.
+    updates: Updates,
     /// The session name, edited on the home page.
     pub name_input: Entity<InputState>,
     /// Keeps the name the input shows and the name the settings hold together.
@@ -102,7 +114,12 @@ pub struct RootView {
 
 impl RootView {
     /// Builds the view for a window, and starts reading what the receiver says.
-    pub fn new(window: &mut Window, cx: &mut Context<Self>, requests: Requests<Target>) -> Self {
+    pub fn new(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        requests: Requests<Target>,
+        updates: Updates,
+    ) -> Self {
         let follows_system =
             state::parlor(cx).settings.appearance.theme == crate::settings::ThemeChoice::System;
         let name = state::parlor(cx).settings.receiver.name.clone();
@@ -127,6 +144,7 @@ impl RootView {
             applied: None,
             restart_pending: false,
             asked_for_backend: false,
+            updates,
             name_input,
             _name_subscription: name_subscription,
         };
@@ -151,6 +169,17 @@ impl RootView {
             cx.defer_in(window, |view, window, cx| view.ask_for_backend(window, cx));
         }
         view
+    }
+
+    /// Asks the repository for the latest version, on a thread of its own so a slow
+    /// network cannot stop the window drawing.
+    fn check_for_update(&mut self, cx: &mut Context<Self>) {
+        state::set_update(cx, crate::update::UpdateState::Checking);
+        let sender = self.updates.sender.clone();
+        std::thread::spawn(move || {
+            let update = crate::update::check();
+            let _ = sender.send_blocking(update);
+        });
     }
 
     /// Reads the session and the installer, and repaints when either moved.
@@ -204,6 +233,17 @@ impl RootView {
                     });
                 }
             }
+        }
+        let mut checks = 0;
+        while self.updates.requests.try_recv().is_ok() {
+            checks += 1;
+        }
+        for _ in 0..checks {
+            self.check_for_update(cx);
+        }
+        while let Ok(update) = self.updates.results.try_recv() {
+            state::set_update(cx, update);
+            changed = true;
         }
         let mut requested = Vec::new();
         while let Ok(target) = self.requests.try_recv() {

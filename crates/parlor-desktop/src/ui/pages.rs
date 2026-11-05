@@ -27,6 +27,7 @@ use crate::settings::{
 };
 use crate::state;
 use crate::ui::RootView;
+use crate::update::UpdateState;
 
 /// The whole settings surface.
 pub fn render(
@@ -1258,10 +1259,34 @@ fn about(cx: &App) -> SettingPage {
             }),
             SettingItem::render(move |_, _window, cx| {
                 let text = |label: Text| label.of(state::lang(cx));
+                let update = cx.global::<state::Parlor>().update.clone();
+                let (message, label) = match &update {
+                    UpdateState::Idle => (String::new(), text(Text::CheckUpdates).to_owned()),
+                    UpdateState::Checking => {
+                        (text(Text::UpdateChecking).to_owned(), text(Text::CheckUpdates).to_owned())
+                    }
+                    UpdateState::UpToDate => {
+                        (text(Text::UpdateUpToDate).to_owned(), text(Text::CheckUpdates).to_owned())
+                    }
+                    UpdateState::Available(version) => (
+                        format!("{} {version}", text(Text::UpdateAvailable)),
+                        text(Text::Download).to_owned(),
+                    ),
+                    UpdateState::Failed(reason) => (
+                        format!("{}: {reason}", text(Text::UpdateFailed)),
+                        text(Text::CheckUpdates).to_owned(),
+                    ),
+                };
+                let downloads = matches!(update, UpdateState::Available(_));
                 v_flex()
                     .w_full()
                     .items_center()
                     .gap_3()
+                    .when(!message.is_empty(), |this| {
+                        this.child(
+                            div().text_sm().text_color(cx.theme().muted_foreground).child(message),
+                        )
+                    })
                     .child(
                         h_flex()
                             .gap_2()
@@ -1270,8 +1295,14 @@ fn about(cx: &App) -> SettingPage {
                                 Button::new("check-updates")
                                     .large()
                                     .primary()
-                                    .label(text(Text::CheckUpdates))
-                                    .on_click(|_, _, _| {}),
+                                    .label(label)
+                                    .on_click(move |_, _, cx| {
+                                        if downloads {
+                                            cx.open_url(crate::update::RELEASES_URL);
+                                        } else {
+                                            state::request_update_check(cx);
+                                        }
+                                    }),
                             )
                             .child(
                                 Button::new("homepage")

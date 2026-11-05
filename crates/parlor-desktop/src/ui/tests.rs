@@ -125,6 +125,8 @@ fn open_home(
         },
     };
     let (installs, requests) = async_channel::unbounded();
+    let (check_updates, update_requests) = async_channel::unbounded();
+    let (update_sender, update_results) = async_channel::unbounded();
     cx.update(move |cx| {
         cx.set_global(Parlor {
             settings: document.clone(),
@@ -135,9 +137,22 @@ fn open_home(
             log: crate::session::logging::LogHandle::detached(),
             installs,
             gst_elements: std::collections::BTreeSet::new(),
+            update: crate::update::UpdateState::Idle,
+            check_updates,
         });
         gpui_kit::open_window(WindowOptions::default(), cx, move |window, cx| {
-            cx.new(|cx| super::RootView::new(window, cx, requests))
+            cx.new(|cx| {
+                super::RootView::new(
+                    window,
+                    cx,
+                    requests,
+                    super::Updates {
+                        requests: update_requests,
+                        results: update_results,
+                        sender: update_sender,
+                    },
+                )
+            })
         })
         .expect("a test window")
     })

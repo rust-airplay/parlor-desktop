@@ -35,6 +35,10 @@ pub struct Parlor {
     pub installs: async_channel::Sender<crate::render::install::Target>,
     /// The GStreamer elements the runtime has installed, for the pages' choices.
     pub gst_elements: std::collections::BTreeSet<String>,
+    /// What is known about a newer release.
+    pub update: crate::update::UpdateState,
+    /// The channel the about page uses to ask for a check.
+    pub check_updates: async_channel::Sender<()>,
 }
 
 impl Global for Parlor {}
@@ -42,6 +46,19 @@ impl Global for Parlor {}
 /// The shared state.
 pub fn parlor(cx: &App) -> &Parlor {
     cx.global::<Parlor>()
+}
+
+/// Records what the update check found, and repaints the about page.
+pub fn set_update(cx: &mut App, update: crate::update::UpdateState) {
+    cx.update_global::<Parlor, _>(|parlor, cx| {
+        parlor.update = update;
+        cx.refresh_windows();
+    });
+}
+
+/// Asks for an update check; the window answers on its next pump.
+pub fn request_update_check(cx: &App) {
+    let _ = cx.global::<Parlor>().check_updates.try_send(());
 }
 
 /// The language labels are written in.

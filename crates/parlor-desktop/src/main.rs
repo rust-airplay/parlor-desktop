@@ -12,6 +12,7 @@ mod session;
 mod settings;
 mod state;
 mod ui;
+mod update;
 
 fn main() {
     app::run();

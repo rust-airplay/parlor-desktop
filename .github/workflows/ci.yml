@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # The backends are found at run time, so the tests do not need GStreamer or FFmpeg
+      # installed; the two renderer tests are ignored for the same reason.
+      - name: Run the tests
+        run: cargo test --locked
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Build the release binary and the plugin
+        run: cargo build --release --locked
+
+  # The version in Cargo.toml is a promise; this is the job that keeps it.
+  msrv:
+    name: rust 1.92
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install the oldest supported Rust
+        uses: dtolnay/rust-toolchain@1.92.0
+
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check the workspace builds on the declared version
+        run: cargo check --locked --all-targets

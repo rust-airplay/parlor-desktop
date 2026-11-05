@@ -83,6 +83,8 @@ pub fn run() {
     let problems = settings.problems();
     let theme = settings.appearance.theme;
     let (install_sender, install_receiver) = async_channel::unbounded::<Target>();
+    let (check_sender, check_receiver) = async_channel::unbounded::<()>();
+    let (update_sender, update_receiver) = async_channel::unbounded::<crate::update::UpdateState>();
 
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
@@ -95,6 +97,8 @@ pub fn run() {
             log,
             installs: install_sender,
             gst_elements,
+            update: crate::update::UpdateState::Idle,
+            check_updates: check_sender,
         });
         apply_theme_without_window(theme, cx);
         let options = WindowOptions {
@@ -105,7 +109,18 @@ pub fn run() {
             ..Default::default()
         };
         gpui_kit::open_window(options, cx, move |window, cx| {
-            cx.new(|cx| RootView::new(window, cx, install_receiver))
+            cx.new(|cx| {
+                RootView::new(
+                    window,
+                    cx,
+                    install_receiver,
+                    crate::ui::Updates {
+                        requests: check_receiver,
+                        results: update_receiver,
+                        sender: update_sender,
+                    },
+                )
+            })
         })
         .expect("the window");
     });

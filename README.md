@@ -1,142 +1,140 @@
 # Parlor
 
-An AirPlay receiver for the desktop, built on the [rust-airplay](https://github.com/rust-airplay)
-libraries.
+[![CI](https://github.com/rust-airplay/parlor-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/rust-airplay/parlor-desktop/actions/workflows/ci.yml)
+[![Release](https://github.com/rust-airplay/parlor-desktop/actions/workflows/release.yml/badge.svg)](https://github.com/rust-airplay/parlor-desktop/actions/workflows/release.yml)
 
-A device sees Parlor in its AirPlay menu, pairs with a PIN, and mirrors its screen or plays
-its audio. Parlor is the program around the receiver: it keeps the settings a person chooses,
-starts and stops the receiver, shows the PIN and what has connected, and looks for what a
-machine has to play through before it starts.
+<img src="assets/icon-128.png" width="80" align="right" alt="Parlor">
 
-The protocol and the media handling are not here. `rust-airplay` answers the device and
-decrypts the streams; a playback backend decodes and presents them. Parlor owns the window,
-the session's lifetime and both backends' requirements.
+Parlor is an AirPlay receiver with a desktop interface for Windows. A device sees Parlor in
+its AirPlay menu, pairs with a PIN, and mirrors its screen or plays its audio.
 
-## What it does
+It is the window around the receiver: it keeps the settings a person chooses, starts and stops
+the receiver, shows the PIN and what has connected, and finds - or installs - the programs
+that decode and present the streams. The protocol and the media handling are not here.
+[`rust-airplay`](https://github.com/rust-airplay/rust-airplay) answers the device and
+decrypts the streams; [`rust-airplay-gstream`](https://github.com/rust-airplay/rust-airplay-gstream)
+and [`rust-airplay-ffmpeg`](https://github.com/rust-airplay/rust-airplay-ffmpeg) play them.
 
-- Receives screen mirroring and audio from AirPlay clients, with the one-time or fixed PIN
-  the protocol asks for.
-- Plays through **FFmpeg** (two programs, no native build dependency) or **GStreamer**
-  (a plugin loaded at run time), switched in the settings.
-- Finds a backend in `lib` beside the application first, then through the environment
-  (`PARLOR_GSTREAMER_DIR`, `PARLOR_FFMPEG_DIR`, the backends' own `AIRPLAY_*` variables, and
-  finally the `PATH`).
-- Installs a missing backend from the application itself, into the user's Parlor directory,
-  and records that directory in the same environment variable detection reads.
-- Covers the receiver's whole configuration surface: identity, name, ports, bind address,
-  announcement, pairing, password, client policy, remembered devices, the advertised
-  display and frame rate, the feature bitmap, audio codec and latency, the volume curve,
-  the video pacing decision, and every diagnostic file.
-- Puts the controls a person reaches for while watching on the home page: start and stop,
-  resolution, frame rate, and the backend.
-- Has a light and a dark theme, follows the operating system's appearance, and speaks
-  English and Simplified Chinese.
+## Features
+
+- **Screen mirroring and audio** from AirPlay clients, with a one-time or fixed PIN.
+- **Two playback backends, switchable in the application:**
+  - **GStreamer**, through a plugin loaded at run time. Hardware decoders are used when the
+    runtime has them.
+  - **FFmpeg**, through `ffmpeg` and `ffplay`, with no native build dependency.
+- **One-click install** of a missing backend into `%LOCALAPPDATA%\Parlor\backends`, with the
+  environment recorded so the next start finds it.
+- **The whole receiver configuration**: identity, name, ports, bind address, announcement,
+  pairing, password, client policy, remembered devices, the advertised display and frame
+  rate, the feature bitmap, audio codec and latency, the volume curve, video pacing, and
+  the diagnostic files.
+- **A home page for the controls reached while watching**: start and stop, session name,
+  mirror size, frame rate and backend.
+- **Light and dark themes**, following the system by default, and **English and Simplified
+  Chinese**.
+- **Update check** in About: the latest release names itself in [`Version`](Version), and
+  the button opens the release page when a newer one exists.
 
 The interface uses no emoji.
 
 ## Requirements
 
 - Windows 10 or later, 64 bit.
-- Rust 1.92 or newer with the MSVC toolchain.
-- Visual Studio 2022 Build Tools with the *Desktop development with C++* workload, which is
-  what GPUI compiles against.
-- CMake on `PATH` for the same reason.
-- For the GStreamer backend only: the GStreamer MSVC development files, which
-  `scripts/setup-gstreamer.ps1` fetches, and `pkg-config` on `PATH` (for example the
-  one MSYS2 or `pkg-config-lite` provides).
-
-The FFmpeg backend needs neither at build time.
+- Rust 1.92 or newer with the MSVC toolchain, to build.
+- No media library is needed to build. GStreamer and FFmpeg are found at run time, and the
+  application can install either one when a machine has neither.
 
 ## Building
 
 ```powershell
-# Optional: the GStreamer runtime and development packages, unpacked under .tools
-powershell -ExecutionPolicy Bypass -File scripts\setup-gstreamer.ps1
+# The debug build, and the GStreamer plugin beside it.
+scripts\build.ps1
 
-# The application, and the GStreamer plugin when the development files are present
-powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Release
+# The release build.
+scripts\build.ps1 -Release
 ```
 
-Without the GStreamer development files the application still builds, and the GStreamer
-backend reports that its plugin is missing. That is deliberate: the application must start
-on a machine that has no GStreamer so that it can say where one goes.
-
-The plugin is a separate library, `parlor_gst_backend.dll`, built beside the executable.
-The application loads it only when the GStreamer backend is chosen.
+`scripts\run.ps1` starts the debug build. The workspace has three crates:
+`parlor-desktop` is the program, `parlor-backend-api` is the plugin boundary, and
+`parlor-gst-backend` is the GStreamer plugin.
 
 ## Running
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\run.ps1
-```
+Start `parlor-desktop.exe`. On the first run the home page offers to install a playback
+backend when the machine has none; choose GStreamer when it can be installed, because it
+decodes on the GPU.
 
-Then start the receiver from the home page and choose Parlor in the AirPlay menu of a
-device. If the receiver is running and no device has paired with this machine before, the
-device asks for the PIN the window shows.
+The device connects over the local network. Pair with the PIN the application shows, then
+mirror the screen or play audio from the AirPlay menu.
 
-A release build runs from `target\release\parlor-desktop.exe`. The plugin beside it is
-loaded on demand; the GStreamer runtime is looked for in the application's own data
-directory, beside the executable, and in `PARLOR_GSTREAMER_DIR`.
+## Playback backends
 
-## Backends
-
-| | FFmpeg | GStreamer |
+| | GStreamer | FFmpeg |
 | --- | --- | --- |
-| Build dependency | none | GStreamer MSVC development files |
-| Run dependency | `ffmpeg.exe` and `ffplay.exe` | the GStreamer runtime, its plugins, and `gst-launch-1.0` |
-| Loaded | in the application | from `parlor_gst_backend.dll` |
-| Where it is found | `lib` beside the executable, then `PARLOR_FFMPEG_DIR`, then `PATH` | `lib` beside the executable, then `PARLOR_GSTREAMER_DIR`, then `PATH` |
-| Install from the application | yes: the project's release archive | yes: the official runtime package, unpacked |
+| Delivery | `parlor_gst_backend.dll` loads GStreamer at run time | `ffplay` / `ffmpeg` programs |
+| Decoding | GPU (`d3d11h264dec`, `d3d11h265dec`) when available | CPU, or GPU with hardware decoding on |
+| Latency | Lowest | Higher; it is the fallback |
+| Install | One click | One click |
 
-Both backends play video in their own window: a backend receives coded frames and presents
-them through its own pipeline, and a frame never enters the window's compositor. Parlor is
-the receiver's interface, not a video widget.
+The FFmpeg video window defaults to 1280x720 because `ffplay` sizes its window to the
+video. Choose 1600x900 or fullscreen in **Settings > Playback > FFmpeg > Video output**.
 
-## Settings and files
+## Settings worth knowing
 
-Settings live in `%LOCALAPPDATA%\Parlor\settings.toml`, written on every change, and are
-a plain TOML document a person may read and edit while Parlor is closed. The same directory
-holds the identity seed, the remembered clients, the log, and any backend the application
-installed (under `backends`). An installed backend is recorded in `PARLOR_GSTREAMER_DIR` or
-`PARLOR_FFMPEG_DIR` for the current user, which is how the next run finds it.
+- **Mirror size.** A mirror is the device's own picture scaled to the advertised size, so
+  1920x1080 stays sharp; larger sizes ask the device to upscale. The FFmpeg backend is capped
+  at 1080p while it decodes in software.
+- **Hardware decoding** is on by default. The FFmpeg renderer asks its decoder for the
+  accelerator the build has and falls back to software when there is none.
+- **Settings apply when the receiver starts.** A changed setting shows a restart notice on
+  the home page and in the rail.
+- Files live in `%LOCALAPPDATA%\Parlor`: `settings.toml`, the identity, `logs\parlor.log`
+  and the installed backends.
 
-Every value of the receiver's configuration has a page in the application;
-[docs/feature-inventory.md](docs/feature-inventory.md) maps each one to the page that shows
-it and states what it does.
+## Updating
 
-## Project layout
+The latest release names its version in [`Version`](Version). **Settings > About > Check for
+updates** reads that file and, when it names a newer version, offers the release page.
 
-```
-crates/parlor-desktop/       the application: window, settings, session, backends, installer
-  src/app.rs                 bootstrap: files, logger, window
-  src/settings/              the settings document, its storage and the identity
-  src/render/                backend choice, detection and the plugin loader
-  src/session/               a receiver on its own thread, and its events
-  src/ui/                    the window: rail, home page, settings pages
-  src/i18n/                  every label, in English and Chinese
-crates/parlor-backend-api/   the contract a renderer plugin implements
-crates/parlor-gst-backend/   the GStreamer plugin
-docs/                        architecture, building, and the receiver's feature inventory
-scripts/                     setup, build and run
-```
+A new version is installed by replacing the old program, so the archive contains
+`parlor-desktop.exe`, `parlor_gst_backend.dll`, this README, the licence and the version
+file. Settings are kept in `%LOCALAPPDATA%\Parlor` and survive the replacement.
 
 ## Testing
 
 ```powershell
 cargo test -p parlor-desktop -p parlor-backend-api
+cargo clippy -p parlor-desktop -p parlor-backend-api --all-targets -- -D warnings
+cargo fmt --all -- --check
 ```
 
-Two tests build a real renderer and are ignored by default because they need what only a
-machine with a backend has:
+The two renderer tests are ignored by default because they need a real backend:
 
 ```powershell
-# with the plugin beside the test binary and a GStreamer runtime to load
-cargo test -p parlor-desktop -- --ignored
+cargo build -p parlor-gst-backend
+copy target\debug\parlor_gst_backend.dll target\debug\deps\
+$env:PARLOR_GSTREAMER_DIR = "$PWD\.tools\gstreamer\runtime"
+cargo test -p parlor-desktop --bin parlor-desktop -- --ignored --test-threads=1
 ```
 
-## Licence
+## Releasing
 
-GNU General Public License, version 3 or later. The receiver libraries are GPL-3.0-or-later
-and a program that links them is bound by the same licence.
+Run **Actions > Release > Run workflow** with the tag to create, for example `v0.2.0`, and
+optionally the notes and a draft flag. The workflow checks that the tag matches
+`Cargo.toml`, builds and tests on `windows-latest`, packages the program and plugin, and
+creates the GitHub release. It then writes the version into `Version` on `main`, which is
+what the update check reads.
 
-中文说明: [README.zh-CN.md](README.zh-CN.md)
+## Documentation
+
+- [`docs/BUILDING.md`](docs/BUILDING.md) - the toolchains, the icon, and the GStreamer
+  loader.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - how the window, the session and the
+  backends fit together.
+- [`docs/feature-inventory.md`](docs/feature-inventory.md) - every receiver feature and
+  where it is configured.
+- [`AGENT.md`](AGENT.md) - the brief this application was built to.
+
+## License
+
+GPL-3.0-or-later. See [`LICENSE`](LICENSE).
