@@ -29,6 +29,9 @@ reqwest = { workspace = true }
 zip = { workspace = true }
 windows-sys = { workspace = true }
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
 [dev-dependencies]
 tempfile = { workspace = true }
 gpui-kit = { workspace = true, features = ["test-support"] }
