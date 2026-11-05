@@ -732,7 +732,9 @@ fn backend(cx: &App, install: Option<(Target, Progress)>) -> SettingPage {
                     state::update_settings(cx, |settings| settings.backend.kind = kind);
                 },
             ),
-        ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::BackendHint)),
         availability_item(text, lang, Target::GStreamer, backends.gstreamer.clone(), paths.clone()),
         availability_item(text, lang, Target::Ffmpeg, backends.ffmpeg.clone(), paths.clone()),
         SettingItem::render(move |_, _window, cx| {
