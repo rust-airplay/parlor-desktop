@@ -43,6 +43,16 @@ on a machine with a MinGW GStreamer on the `PATH`: its libraries are named
 `libgstreamer-1.0-0.dll`, which an MSVC plugin cannot import, so the application reports that
 runtime as missing instead of listing it as ready.
 
+## Crashes in development builds
+
+Development builds are compiled without debug assertions. GPUI asserts, only when debug
+assertions are present, that an accessibility frame does not name two focused nodes; a video
+window that takes focus and gives it back reaches that path, and the assertion aborts the
+process instead of warning as it does in release. Overflow checks stay on.
+
+A panic is written to `logs/parlor.log` even when the log level is Off, with a backtrace, so
+a window that disappears leaves the reason behind.
+
 ## The icon
 
 `assets/icon.ico` is embedded in the executable by `crates/parlor-desktop/build.rs`, which is

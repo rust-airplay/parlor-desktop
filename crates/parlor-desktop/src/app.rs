@@ -36,6 +36,12 @@ pub fn run() {
         Settings::new()
     });
     log.set_level(settings.diagnostics.log_level.filter());
+    install_panic_log(&log);
+    log::info!(
+        "Parlor {} ({})",
+        env!("CARGO_PKG_VERSION"),
+        if cfg!(debug_assertions) { "debug" } else { "release" }
+    );
     log::info!("language  {}", crate::i18n::describe_system_language());
     let identity = Identity::load(&paths).unwrap_or_else(|error| {
         log::error!("{error}");
@@ -121,6 +127,22 @@ fn prefer_hardware_decoding(
     }
     log::info!("GStreamer decoding with {}", chosen.join(" and "));
     true
+}
+
+/// Records a panic before the process dies.
+///
+/// A desktop application has no console, so the default hook's message is lost when the
+/// window closes. Writing it to the log, and flushing, is what makes the last line survive
+/// the abort that follows a panic in a platform callback.
+fn install_panic_log(log: &crate::session::logging::LogHandle) {
+    let log = log.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        // Written past the level filter: a quiet log is still a log that must explain a
+        // crash.
+        log.record_always(log::Level::Error, "panic", format!("panic: {info}\n{backtrace}"));
+        log.flush();
+    }));
 }
 
 /// One backend's availability, for the log.

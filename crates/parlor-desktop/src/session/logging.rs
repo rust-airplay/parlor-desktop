@@ -90,6 +90,24 @@ impl LogHandle {
         self.lines.lock().map(|lines| lines.iter().cloned().collect()).unwrap_or_default()
     }
 
+    /// Records one line even when the level filter would drop it.
+    ///
+    /// The panic hook uses this: a session that dies must leave the reason behind even when
+    /// the person had asked for a quiet log.
+    pub fn record_always(&self, level: log::Level, target: &str, message: String) {
+        let line = Line { at: Local::now(), level, target: target.to_owned(), message };
+        self.record(line);
+    }
+
+    /// Flushes the file, for a caller about to abort.
+    pub fn flush(&self) {
+        if let Ok(mut file) = self.file.lock()
+            && let Some(file) = file.as_mut()
+        {
+            let _ = file.flush();
+        }
+    }
+
     /// Whether a record at this level is kept.
     fn accepts(&self, level: log::Level) -> bool {
         level as usize <= self.level.load(Ordering::Relaxed)
@@ -185,6 +203,17 @@ mod tests {
 
     fn line(level: log::Level) -> Line {
         Line { at: Local::now(), level, target: "test".to_owned(), message: "x".to_owned() }
+    }
+
+    #[test]
+    fn a_panic_is_recorded_even_when_the_level_is_off() {
+        let handle = handle();
+        handle.level.store(log::LevelFilter::Off as usize, Ordering::Relaxed);
+        handle.record_always(log::Level::Error, "panic", "it died".to_owned());
+        let lines = handle.lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].target, "panic");
+        assert_eq!(lines[0].message, "it died");
     }
 
     #[test]

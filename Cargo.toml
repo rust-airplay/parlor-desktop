@@ -78,6 +78,13 @@ print_stderr = { level = "deny", priority = -1 }
 # symbols for a backtrace to be readable.
 [profile.dev]
 debug = "limited"
+# GPUI asserts, only when debug assertions are compiled in, that one accessibility frame
+# names two focused nodes; release builds log a warning and continue. A video window that
+# takes focus and returns it reaches that path, and a dependency's assertion should not end
+# a session in a development build, so dev builds keep the release behaviour. Overflow
+# checks stay on because they catch real arithmetic mistakes.
+debug-assertions = false
+overflow-checks = true
 
 [profile.release]
 debug = "line-tables-only"
