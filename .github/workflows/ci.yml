@@ -40,7 +40,7 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Build the release binary and the plugin
-        run: cargo build --release --locked
+        run: cargo build --release --locked --workspace
 
   # The version in Cargo.toml is a promise; this is the job that keeps it.
   msrv:

@@ -50,8 +50,10 @@ jobs:
       - name: Run the tests
         run: cargo test --locked
 
+      # The plugin is not a default member: the application does not link it, but it has
+      # to be in the archive, so the whole workspace is built.
       - name: Build the binary and the plugin
-        run: cargo build --release --locked
+        run: cargo build --release --locked --workspace
 
       # The archive is the whole installation: the program, the GStreamer plugin it loads,
       # the licence, this README and the version file a client can read.
