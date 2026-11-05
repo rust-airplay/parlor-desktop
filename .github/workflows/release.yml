@@ -41,6 +41,27 @@ jobs:
           tag="${{ inputs.tag }}"
           echo "TAG=v${tag#[vV]}" >> "$GITHUB_ENV"
 
+      - name: Install GStreamer (MSYS2)
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gstreamer
+            mingw-w64-ucrt-x86_64-gst-plugins-base
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Point pkg-config at GStreamer
+        shell: pwsh
+        run: |
+          $msys2 = '${{ steps.msys2.outputs.msys2-location }}'
+          if (-not $msys2) { $msys2 = 'C:\msys64' }
+          $prefix = Join-Path $msys2 'ucrt64'
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "PKG_CONFIG=$(Join-Path $prefix 'bin\pkg-config.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_CONFIG_PATH=$(Join-Path $prefix 'lib\pkgconfig')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
