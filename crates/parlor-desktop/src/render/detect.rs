@@ -214,11 +214,9 @@ pub fn gst_launch(settings: &Settings) -> Option<PathBuf> {
 /// headers and costs one short process. An absent inspector means "not known", which is
 /// answered false so the caller keeps the software default rather than guessing.
 pub fn has_element(launch: &std::path::Path, element: &str) -> bool {
-    let name = if cfg!(windows) { "gst-inspect-1.0.exe" } else { "gst-inspect-1.0" };
-    let inspector = launch.with_file_name(name);
-    if !inspector.is_file() {
+    let Some(inspector) = inspect_path(launch) else {
         return false;
-    }
+    };
     let mut command = std::process::Command::new(inspector);
     command.arg(element).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     #[cfg(windows)]
@@ -229,6 +227,53 @@ pub fn has_element(launch: &std::path::Path, element: &str) -> bool {
         command.creation_flags(0x0800_0000);
     }
     command.status().map(|status| status.success()).unwrap_or(false)
+}
+
+/// The runtime's inspector, beside the launcher that was found.
+fn inspect_path(launch: &std::path::Path) -> Option<std::path::PathBuf> {
+    let name = if cfg!(windows) { "gst-inspect-1.0.exe" } else { "gst-inspect-1.0" };
+    let inspector = launch.with_file_name(name);
+    inspector.is_file().then_some(inspector)
+}
+
+/// The elements the runtime has installed, as the inspector lists them.
+///
+/// One process answers for every element, which is what lets the settings pages offer
+/// choices instead of asking a person to type an element name from memory. An unavailable
+/// inspector is an empty set: the pages then offer only the automatic choice.
+pub fn elements(launch: &std::path::Path) -> std::collections::BTreeSet<String> {
+    let Some(inspector) = inspect_path(launch) else {
+        return std::collections::BTreeSet::new();
+    };
+    let mut command = std::process::Command::new(inspector);
+    command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        command.creation_flags(0x0800_0000);
+    }
+    let Ok(output) = command.output() else {
+        return std::collections::BTreeSet::new();
+    };
+    parse_elements(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Reads the element names out of an inspector listing.
+///
+/// A line is `plugin:  element: description`; the middle field is the name an options page
+/// may offer.
+fn parse_elements(listing: &str) -> std::collections::BTreeSet<String> {
+    listing
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, ':');
+            let _plugin = fields.next()?;
+            let element = fields.next()?.trim();
+            // A line without the description is not a feature of a plugin.
+            fields.next()?;
+            (!element.is_empty()).then(|| element.to_owned())
+        })
+        .collect()
 }
 
 /// The directories beside the application that a bundled backend can live in.

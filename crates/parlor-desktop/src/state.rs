@@ -33,6 +33,8 @@ pub struct Parlor {
     pub log: LogHandle,
     /// The channel the settings pages use to ask for an installation.
     pub installs: async_channel::Sender<crate::render::install::Target>,
+    /// The GStreamer elements the runtime has installed, for the pages' choices.
+    pub gst_elements: std::collections::BTreeSet<String>,
 }
 
 impl Global for Parlor {}

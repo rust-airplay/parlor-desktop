@@ -134,6 +134,7 @@ fn open_home(
             problems: Vec::new(),
             log: crate::session::logging::LogHandle::detached(),
             installs,
+            gst_elements: std::collections::BTreeSet::new(),
         });
         gpui_kit::open_window(WindowOptions::default(), cx, move |window, cx| {
             cx.new(|cx| super::RootView::new(window, cx, requests))

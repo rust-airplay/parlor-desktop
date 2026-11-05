@@ -16,7 +16,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::i18n::{Lang, Text};
-use crate::render::detect::{Availability, MissingPart};
+use crate::render::detect::{self, Availability, MissingPart};
 use crate::render::install::{self, Progress, Target};
 use crate::settings::{
     AudioCodecChoice, BackendKind, DisplaySettings, LanguageChoice, LogLevel, PinChoice, PortsMode,
@@ -247,7 +247,8 @@ fn network(cx: &App) -> SettingPage {
             ),
             SettingItem::new(
                 text(Text::BindAddress),
-                SettingField::input(
+                SettingField::dropdown(
+                    bind_options(&cx.global::<state::Parlor>().settings.network.bind, text),
                     |cx| {
                         SharedString::from(
                             cx.global::<state::Parlor>().settings.network.bind.clone(),
@@ -530,39 +531,23 @@ fn video(cx: &App) -> SettingPage {
             .layout(Axis::Vertical)
             .description(text(Text::OverscannedHint)),
             SettingItem::new(
-                text(Text::Width),
-                SettingField::number_input(
-                    NumberFieldOptions {
-                        min: f64::from(DisplaySettings::MIN_SIDE),
-                        max: f64::from(DisplaySettings::MAX_SIDE),
-                        step: 2.0,
+                text(Text::Resolution),
+                SettingField::dropdown(
+                    resolution_options(
+                        cx.global::<state::Parlor>().settings.display.width,
+                        cx.global::<state::Parlor>().settings.display.height,
+                    ),
+                    |cx| {
+                        let display = &cx.global::<state::Parlor>().settings.display;
+                        SharedString::from(format!("{}x{}", display.width, display.height))
                     },
-                    |cx| f64::from(cx.global::<state::Parlor>().settings.display.width),
-                    |value, cx| {
+                    |value: SharedString, cx| {
+                        let Some((width, height)) = parse_resolution(&value) else {
+                            return;
+                        };
                         state::update_settings(cx, |settings| {
-                            settings.display.width = value.round().clamp(
-                                f64::from(DisplaySettings::MIN_SIDE),
-                                f64::from(DisplaySettings::MAX_SIDE),
-                            ) as u32;
-                        });
-                    },
-                ),
-            ),
-            SettingItem::new(
-                text(Text::Height),
-                SettingField::number_input(
-                    NumberFieldOptions {
-                        min: f64::from(DisplaySettings::MIN_SIDE),
-                        max: f64::from(DisplaySettings::MAX_SIDE),
-                        step: 2.0,
-                    },
-                    |cx| f64::from(cx.global::<state::Parlor>().settings.display.height),
-                    |value, cx| {
-                        state::update_settings(cx, |settings| {
-                            settings.display.height = value.round().clamp(
-                                f64::from(DisplaySettings::MIN_SIDE),
-                                f64::from(DisplaySettings::MAX_SIDE),
-                            ) as u32;
+                            settings.display.width = width;
+                            settings.display.height = height;
                         });
                     },
                 ),
@@ -592,12 +577,20 @@ fn video(cx: &App) -> SettingPage {
             ),
             SettingItem::new(
                 text(Text::RefreshRate),
-                SettingField::number_input(
-                    NumberFieldOptions { min: 1.0, max: 240.0, step: 1.0 },
-                    |cx| cx.global::<state::Parlor>().settings.display.refresh_rate,
-                    |value, cx| {
+                SettingField::dropdown(
+                    refresh_options(cx.global::<state::Parlor>().settings.display.refresh_rate),
+                    |cx| {
+                        SharedString::from(format!(
+                            "{:.0}",
+                            cx.global::<state::Parlor>().settings.display.refresh_rate
+                        ))
+                    },
+                    |value: SharedString, cx| {
+                        let Ok(hz) = value.parse::<f64>() else {
+                            return;
+                        };
                         state::update_settings(cx, |settings| {
-                            settings.display.refresh_rate = value.clamp(1.0, 240.0);
+                            settings.display.refresh_rate = hz.clamp(1.0, 240.0);
                         });
                     },
                 ),
@@ -880,7 +873,8 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
     let mut items = vec![
         SettingItem::new(
             text(Text::Decoder),
-            SettingField::input(
+            SettingField::dropdown(
+                decoder_options(cx),
                 |cx| {
                     SharedString::from(
                         cx.global::<state::Parlor>().settings.backend.ffmpeg.decoder.clone(),
@@ -897,7 +891,12 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
         .description(text(Text::EmptyUsesBackendDefault)),
         SettingItem::new(
             text(Text::AudioSink),
-            SettingField::input(
+            SettingField::dropdown(
+                value_options(
+                    &["ffplay -nodisp".to_owned(), "ffplay -nodisp -volume 0".to_owned()],
+                    &cx.global::<state::Parlor>().settings.backend.ffmpeg.audio_sink,
+                    text(Text::AutoChoice).into(),
+                ),
                 |cx| {
                     SharedString::from(
                         cx.global::<state::Parlor>().settings.backend.ffmpeg.audio_sink.clone(),
@@ -912,7 +911,12 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
         ),
         SettingItem::new(
             text(Text::VideoSink),
-            SettingField::input(
+            SettingField::dropdown(
+                value_options(
+                    &["ffplay -framedrop".to_owned(), "ffplay -framedrop -fs".to_owned()],
+                    &cx.global::<state::Parlor>().settings.backend.ffmpeg.video_sink,
+                    text(Text::AutoChoice).into(),
+                ),
                 |cx| {
                     SharedString::from(
                         cx.global::<state::Parlor>().settings.backend.ffmpeg.video_sink.clone(),
@@ -971,58 +975,81 @@ fn ffmpeg_group(cx: &App) -> SettingGroup {
 fn gstreamer_group(cx: &App) -> SettingGroup {
     let lang = state::lang(cx);
     let text = move |label: Text| label.of(lang);
-    let input_item =
-        |label: &'static str, get: fn(&Chosen) -> String, set: fn(&mut Chosen) -> &mut String| {
-            let _ = label;
-            SettingItem::new(
-                label,
-                SettingField::input(
-                    move |cx| SharedString::from(get(&cx.global::<state::Parlor>().settings)),
-                    move |value: SharedString, cx| {
-                        state::update_settings(cx, |settings| {
-                            *set(settings) = value.to_string();
-                        });
-                    },
-                ),
-            )
-            .layout(Axis::Vertical)
-            .description(text(Text::EmptyUsesBackendDefault))
-        };
+    let elements = cx.global::<state::Parlor>().gst_elements.clone();
+    let element_item = |label: &'static str,
+                        get: fn(&Chosen) -> String,
+                        set: fn(&mut Chosen) -> &mut String,
+                        candidates: &'static [&'static str]| {
+        let current = get(&cx.global::<state::Parlor>().settings);
+        SettingItem::new(
+            label,
+            SettingField::dropdown(
+                element_options(&elements, candidates, &current, text(Text::AutoChoice).into()),
+                move |cx| SharedString::from(get(&cx.global::<state::Parlor>().settings)),
+                move |value: SharedString, cx| {
+                    state::update_settings(cx, |settings| {
+                        *set(settings) = value.to_string();
+                    });
+                },
+            ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::EmptyUsesBackendDefault))
+    };
     SettingGroup::new().title(text(Text::GStreamer)).items(vec![
-        input_item(
+        SettingItem::new(
             text(Text::Location),
-            |settings| settings.backend.gstreamer.launch_path.clone(),
-            |settings| &mut settings.backend.gstreamer.launch_path,
-        ),
-        input_item(
+            SettingField::dropdown(
+                launch_options(cx),
+                |cx| {
+                    SharedString::from(
+                        cx.global::<state::Parlor>().settings.backend.gstreamer.launch_path.clone(),
+                    )
+                },
+                |value: SharedString, cx| {
+                    state::update_settings(cx, |settings| {
+                        settings.backend.gstreamer.launch_path = value.to_string();
+                    });
+                },
+            ),
+        )
+        .layout(Axis::Vertical)
+        .description(text(Text::EmptyUsesBackendDefault)),
+        element_item(
             text(Text::AudioSink),
             |settings| settings.backend.gstreamer.audio_sink.clone(),
             |settings| &mut settings.backend.gstreamer.audio_sink,
+            &["wasapisink", "autoaudiosink", "directsoundsink", "fakesink"],
         ),
-        input_item(
+        element_item(
             text(Text::VideoSink),
             |settings| settings.backend.gstreamer.video_sink.clone(),
             |settings| &mut settings.backend.gstreamer.video_sink,
+            &["d3d11videosink", "autovideosink", "glimagesink", "fakesink"],
         ),
-        input_item(
+        element_item(
             text(Text::H264Parser),
             |settings| settings.backend.gstreamer.h264_parser.clone(),
             |settings| &mut settings.backend.gstreamer.h264_parser,
+            &["h264parse"],
         ),
-        input_item(
+        element_item(
             text(Text::H264Decoder),
             |settings| settings.backend.gstreamer.h264_decoder.clone(),
             |settings| &mut settings.backend.gstreamer.h264_decoder,
+            &["d3d11h264dec", "avdec_h264", "openh264dec"],
         ),
-        input_item(
+        element_item(
             text(Text::H265Parser),
             |settings| settings.backend.gstreamer.h265_parser.clone(),
             |settings| &mut settings.backend.gstreamer.h265_parser,
+            &["h265parse"],
         ),
-        input_item(
+        element_item(
             text(Text::H265Decoder),
             |settings| settings.backend.gstreamer.h265_decoder.clone(),
             |settings| &mut settings.backend.gstreamer.h265_decoder,
+            &["d3d11h265dec", "avdec_h265"],
         ),
         SettingItem::new(
             text(Text::WarmVideo),
@@ -1200,9 +1227,169 @@ fn join_list(values: &[String]) -> String {
     values.join(", ")
 }
 
+/// The addresses this machine can listen on, with the one the settings hold.
+fn bind_options(
+    current: &str,
+    text: impl Fn(Text) -> &'static str + Copy,
+) -> Vec<(SharedString, SharedString)> {
+    let mut options = vec![
+        ("0.0.0.0".into(), text(Text::BindAllInterfaces).into()),
+        ("127.0.0.1".into(), text(Text::BindThisMachine).into()),
+    ];
+    if let Some(lan) = local_address() {
+        let label = format!("{lan} · {}", text(Text::BindLocalNetwork));
+        options.push((SharedString::from(&lan), label.into()));
+    }
+    add_current(&mut options, current);
+    options
+}
+
+/// The address of this machine on its local network, learned without sending anything.
+fn local_address() -> Option<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    Some(socket.local_addr().ok()?.ip().to_string())
+}
+
+/// One option per preset size, plus whatever size the settings hold.
+fn resolution_options(width: u32, height: u32) -> Vec<(SharedString, SharedString)> {
+    let mut options: Vec<(SharedString, SharedString)> = crate::settings::PRESETS
+        .iter()
+        .map(|(width, height)| {
+            let label = format!("{width}x{height}");
+            (label.clone().into(), label.into())
+        })
+        .collect();
+    add_current(&mut options, &format!("{width}x{height}"));
+    options
+}
+
+/// The size a choice names.
+fn parse_resolution(value: &str) -> Option<(u32, u32)> {
+    let (width, height) = value.split_once('x')?;
+    Some((width.trim().parse().ok()?, height.trim().parse().ok()?))
+}
+
+/// The refresh rates a display choice offers, plus the one the settings hold.
+fn refresh_options(current: f64) -> Vec<(SharedString, SharedString)> {
+    let mut rates = vec![30, 50, 60, 90, 120, 144, 240];
+    let rounded = current.round() as u32;
+    if !rates.contains(&rounded) {
+        rates.push(rounded);
+    }
+    rates
+        .into_iter()
+        .map(|hz| {
+            let label = format!("{hz}");
+            (label.clone().into(), label.into())
+        })
+        .collect()
+}
+
+/// Options for a GStreamer element: the automatic choice, the candidates this runtime has,
+/// and a value the settings already hold.
+fn element_options(
+    elements: &std::collections::BTreeSet<String>,
+    candidates: &[&str],
+    current: &str,
+    auto: SharedString,
+) -> Vec<(SharedString, SharedString)> {
+    let mut options = vec![(SharedString::from(""), auto)];
+    for name in candidates {
+        if elements.contains(*name) {
+            options.push((SharedString::from(*name), SharedString::from(*name)));
+        }
+    }
+    add_current(&mut options, current);
+    options
+}
+
+/// Options from a named list, plus a value the settings already hold.
+fn value_options(
+    values: &[String],
+    current: &str,
+    auto: SharedString,
+) -> Vec<(SharedString, SharedString)> {
+    let mut options = vec![(SharedString::from(""), auto)];
+    for value in values {
+        options.push((SharedString::from(value), SharedString::from(value)));
+    }
+    add_current(&mut options, current);
+    options
+}
+
+/// Adds the stored value as an option when the list does not have it, so a value written by
+/// hand stays visible and selectable.
+fn add_current(options: &mut Vec<(SharedString, SharedString)>, current: &str) {
+    if !current.is_empty() && !options.iter().any(|(value, _)| value.as_ref() == current) {
+        options.push((SharedString::from(current), SharedString::from(current)));
+    }
+}
+
+/// The launchers this machine can offer.
+fn launch_options(cx: &App) -> Vec<(SharedString, SharedString)> {
+    let parlor = state::parlor(cx);
+    let mut values = Vec::new();
+    if let Some(found) = detect::gst_launch(&parlor.settings) {
+        values.push(found.display().to_string());
+    }
+    let installed = parlor.paths.backend("gstreamer").join("bin").join("gst-launch-1.0.exe");
+    if installed.is_file() {
+        values.push(installed.display().to_string());
+    }
+    let auto = SharedString::from(Text::AutoChoice.of(state::lang(cx)));
+    value_options(&values, &parlor.settings.backend.gstreamer.launch_path, auto)
+}
+
+/// The FFmpeg programs this machine can offer as the decoder.
+fn decoder_options(cx: &App) -> Vec<(SharedString, SharedString)> {
+    let parlor = state::parlor(cx);
+    let mut values = Vec::new();
+    if let Some(programs) = detect::ffmpeg_programs(&parlor.settings) {
+        values.push(programs.decoder.display().to_string());
+    }
+    let installed = parlor.paths.backend("ffmpeg").join("bin").join("ffmpeg.exe");
+    if installed.is_file() {
+        values.push(installed.display().to_string());
+    }
+    let auto = SharedString::from(Text::AutoChoice.of(state::lang(cx)));
+    value_options(&values, &parlor.settings.backend.ffmpeg.decoder, auto)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{join_list, split_list};
+
+    #[test]
+    fn the_element_choices_are_what_the_runtime_has_plus_the_stored_value() {
+        let elements = ["wasapisink".to_owned(), "fakesink".to_owned()].into_iter().collect();
+        let options = super::element_options(
+            &elements,
+            &["wasapisink", "autoaudiosink", "fakesink"],
+            "directsoundsink",
+            "auto".into(),
+        );
+        let values: Vec<&str> = options.iter().map(|(value, _)| value.as_ref()).collect();
+        assert_eq!(values, ["", "wasapisink", "fakesink", "directsoundsink"]);
+    }
+
+    #[test]
+    fn a_resolution_choice_names_both_sides() {
+        let options = super::resolution_options(1280, 720);
+        assert!(options.iter().any(|(value, _)| value == "1280x720"));
+        let stored = super::resolution_options(1000, 600);
+        assert!(stored.iter().any(|(value, _)| value == "1000x600"));
+        assert_eq!(super::parse_resolution("1920x1080"), Some((1920, 1080)));
+        assert_eq!(super::parse_resolution("1920"), None);
+    }
+
+    #[test]
+    fn a_typed_value_stays_visible_in_a_list_of_choices() {
+        let options =
+            super::value_options(&["ffplay -nodisp".to_owned()], "my own command", "auto".into());
+        let values: Vec<&str> = options.iter().map(|(value, _)| value.as_ref()).collect();
+        assert_eq!(values, ["", "ffplay -nodisp", "my own command"]);
+    }
 
     #[test]
     fn a_list_round_trips() {

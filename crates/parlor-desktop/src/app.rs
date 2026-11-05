@@ -44,6 +44,14 @@ pub fn run() {
     let backends = crate::render::detect::probe(&settings);
     log::info!("GStreamer {}", describe(&backends.gstreamer));
     log::info!("FFmpeg    {}", describe(&backends.ffmpeg));
+    let gst_elements = match &backends.gstreamer {
+        crate::render::detect::Availability::Ready { location, .. } => {
+            let elements = crate::render::detect::elements(location);
+            log::info!("GStreamer offers {} elements", elements.len());
+            elements
+        }
+        crate::render::detect::Availability::Missing { .. } => std::collections::BTreeSet::new(),
+    };
     let mut settings = settings;
     if prefer_hardware_decoding(&mut settings, &backends)
         && let Err(error) = store::save(&paths, &settings)
@@ -64,6 +72,7 @@ pub fn run() {
             problems,
             log,
             installs: install_sender,
+            gst_elements,
         });
         apply_theme_without_window(theme, cx);
         let options = WindowOptions {
