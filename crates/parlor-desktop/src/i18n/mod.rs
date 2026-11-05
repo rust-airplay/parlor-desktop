@@ -241,6 +241,8 @@ pub enum Text {
     SlideshowHint,
     Overscanned,
     OverscannedHint,
+    ResolutionHint,
+    FrameRateHint,
 
     // Audio.
     AudioCodec,
@@ -488,6 +490,12 @@ impl Text {
             Self::SlideshowHint => "Advertised to devices only; the receiver has no slideshow.",
             Self::Overscanned => "Overscanned picture",
             Self::OverscannedHint => "Tells the device the picture is cropped at the edges.",
+            Self::ResolutionHint => {
+                "A mirror is the device's own picture scaled to this size. 1920x1080 stays sharp; larger sizes only ask the device to upscale, which looks softer and costs more. The FFmpeg backend stops at 1080p."
+            }
+            Self::FrameRateHint => {
+                "Mirror clients encode at most 60 frames a second. A higher value only adds load."
+            }
             Self::AudioCodec => "Audio codec",
             Self::CodecAlac => "Apple Lossless",
             Self::CodecAacEld => "AAC-ELD",
@@ -716,6 +724,10 @@ impl Text {
             Self::SlideshowHint => "仅向设备声明，接收器没有幻灯片功能。",
             Self::Overscanned => "过扫描画面",
             Self::OverscannedHint => "告诉设备画面边缘会被裁掉。",
+            Self::ResolutionHint => {
+                "镜像是把设备画面放大到这个尺寸。1920x1080 最清晰；更大的尺寸只会让设备端放大，画面变软、带宽更高。FFmpeg 后端上限 1080p。"
+            }
+            Self::FrameRateHint => "镜像客户端通常最多 60 帧。设得更高只会增加负载。",
             Self::AudioCodec => "音频编码",
             Self::CodecAlac => "Apple Lossless",
             Self::CodecAacEld => "AAC-ELD",

@@ -13,6 +13,7 @@ use crate::state::Parlor;
 use crate::ui::RootView;
 
 /// Starts the application.
+#[allow(unsafe_code)] // The compatibility layer is an environment write before any thread.
 pub fn run() {
     let paths = Paths::discover().unwrap_or_else(|error| {
         // A machine with no per-user data directory cannot keep a setting. Starting with
@@ -37,6 +38,21 @@ pub fn run() {
     });
     log.set_level(settings.diagnostics.log_level.filter());
     install_panic_log(&log);
+    // The video window belongs to a child process (gst-launch or ffplay). A child is
+    // DPI-unaware unless told otherwise, and Windows then bitmap-scales its window to the
+    // display scale, which makes a good stream look soft. The compatibility layer changes
+    // only how Windows sizes those windows; the application itself is already DPI-aware.
+    let mut layers = std::env::var("__COMPAT_LAYER").unwrap_or_default();
+    if !layers.contains("HIGHDPIAWARE") {
+        if !layers.is_empty() {
+            layers.push(' ');
+        }
+        layers.push_str("HIGHDPIAWARE");
+        // SAFETY: startup runs on one thread, before any session or child process exists.
+        unsafe {
+            std::env::set_var("__COMPAT_LAYER", layers);
+        }
+    }
     log::info!(
         "Parlor {} ({})",
         env!("CARGO_PKG_VERSION"),

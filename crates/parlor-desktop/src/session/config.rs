@@ -48,7 +48,32 @@ pub fn receiver_config(
     config.ports = settings.network.media_ports();
     config.client_policy = settings.auth.client_policy();
     config.features = Some(settings.video.features());
-    config.display = settings.display.display();
+    // What the client is told about the display. A mirror is the device's own picture scaled
+    // to this size, so asking for more than 1080p adds load without adding detail, and a
+    // frame rate past 60 is motion no mirror client can encode well. The FFmpeg backend
+    // carries raw frames through a pipe and cannot keep up with a 4K stream at all.
+    let mut display = settings.display.display();
+    display.max_fps = display.max_fps.min(60);
+    display.refresh_rate = display.refresh_rate.min(60.0);
+    if settings.backend.kind == crate::settings::BackendKind::Ffmpeg
+        && (display.width > 1920 || display.height > 1080)
+    {
+        let scale = (1920.0 / display.width as f64).min(1080.0 / display.height as f64);
+        display.width = (display.width as f64 * scale).round() as u64;
+        display.height = (display.height as f64 * scale).round() as u64;
+    }
+    log::info!(
+        "display {}x{} at {:.0} Hz, at most {} fps (asked {}x{} at {:.0} Hz, at most {} fps)",
+        display.width,
+        display.height,
+        display.refresh_rate,
+        display.max_fps,
+        settings.display.width,
+        settings.display.height,
+        settings.display.refresh_rate,
+        settings.display.max_fps
+    );
+    config.display = display;
     config.log_streaming_reports = settings.diagnostics.streaming_reports;
     config.volume_curve = settings.audio.volume_curve();
     config.initial_volume = settings.audio.initial_volume();
@@ -172,6 +197,30 @@ mod tests {
     }
 
     #[test]
+    fn the_advertised_display_stays_within_what_a_mirror_carries() {
+        let (mut settings, identity, paths) = settings_and_identity();
+        let (sender, _receiver) = async_channel::unbounded();
+        let renderer: Arc<dyn rust_airplay::Renderer> = Arc::new(NullRenderer::new());
+
+        settings.display.width = 3840;
+        settings.display.height = 2160;
+        settings.display.max_fps = 120;
+        settings.display.refresh_rate = 120.0;
+        let config = receiver_config(&settings, &identity, Arc::clone(&renderer), &paths, &sender);
+        // A GStreamer mirror keeps the size the person asked for, but not a rate no mirror
+        // client encodes well.
+        assert_eq!((config.display.width, config.display.height), (3840, 2160));
+        assert_eq!(config.display.max_fps, 60);
+        assert_eq!(config.display.refresh_rate, 60.0);
+
+        // The FFmpeg backend carries raw frames through a pipe; 4K is clamped to 1080p,
+        // which still has the same shape.
+        settings.backend.kind = crate::settings::BackendKind::Ffmpeg;
+        let config = receiver_config(&settings, &identity, renderer, &paths, &sender);
+        assert_eq!((config.display.width, config.display.height), (1920, 1080));
+    }
+
+    #[test]
     fn every_setting_reaches_the_receiver() {
         let (mut settings, mut identity, paths) = settings_and_identity();
         identity.remember([7; 32]);
@@ -227,7 +276,8 @@ mod tests {
         assert!(!config.advertise);
         assert_eq!(config.display.width, 2560);
         assert_eq!(config.display.height, 1440);
-        assert_eq!(config.display.refresh_rate, 120.0);
+        // The advertised rate is capped at 60: see the display clamp in receiver_config.
+        assert_eq!(config.display.refresh_rate, 60.0);
         assert_eq!(config.display.max_fps, 60);
         assert!(config.display.overscanned);
         assert_eq!(config.pin, rust_airplay::server::PinMode::Fixed(4321));

@@ -551,7 +551,9 @@ fn video(cx: &App) -> SettingPage {
                         });
                     },
                 ),
-            ),
+            )
+            .layout(Axis::Vertical)
+            .description(text(Text::ResolutionHint)),
             SettingItem::new(
                 text(Text::FrameRate),
                 SettingField::dropdown(
@@ -574,7 +576,9 @@ fn video(cx: &App) -> SettingPage {
                         state::update_settings(cx, |settings| settings.display.max_fps = fps);
                     },
                 ),
-            ),
+            )
+            .layout(Axis::Vertical)
+            .description(text(Text::FrameRateHint)),
             SettingItem::new(
                 text(Text::RefreshRate),
                 SettingField::dropdown(
